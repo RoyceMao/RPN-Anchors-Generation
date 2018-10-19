@@ -14,6 +14,7 @@ Created on 2018/10/17 15:30
 # np.stack：数组里面的元素堆叠
 """
 from overlap import overlap
+from voc_data import get_voc_data, parse_data_detect, voc_final
 import numpy as np
 
 def anchors_generation(base_size=None, ratios=None, scales=None):
@@ -25,7 +26,7 @@ def anchors_generation(base_size=None, ratios=None, scales=None):
     :return: 
     """
     if base_size is None:
-        base_size = 10
+        base_size = 185
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:
@@ -66,12 +67,13 @@ def sliding_anchors_all(shape, stride, anchors):
     sliding_y = (np.arange(0, shape[0]) + 0.5) * stride[0] # len=256
     # shift_x（256✖512，256行数值相同），shift_y（256✖512,512列数值相同）
     shift_x, shift_y = np.meshgrid(sliding_x, sliding_y)
+    # print(shift_x)
     # shifts表示4个坐标值偏移中心点的偏移量? 维度为（256✖512，4）
     shifts = np.vstack((
         shift_x.ravel(), shift_y.ravel(),
         shift_x.ravel(), shift_y.ravel()
     )).transpose()
-    # print(shifts)
+    # rint(shifts.T)
     # 使用numpy的广播将 anchor (1, A, 4)和偏移anchor中心点(K, 1, 4) 相加，最终得到(K, A, 4)，然后再reshape (K*A, 4)
     A = anchors.shape[0] # 每个锚点基准anchors数量
     K = shifts.shape[0] # feature map 上锚点的数量
@@ -82,12 +84,13 @@ def sliding_anchors_all(shape, stride, anchors):
     # print("========================")
     # print(all_anchors) # [0]长度为256✖512，[0][n]长度为9的3维数组
     all_anchors = all_anchors.reshape((K * A, 4))
-    print(all_anchors)
+    # print(all_anchors)
     return all_anchors
+
 
 def pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT):
     """
-    计算all_anchors与给定的GT之间的overlaps，并为每个anchor匹配IOU值最高的gt（IOU值），根据阈值挑选正、负样本
+    计算all_anchors与给定的GT之间的overlaps，并为每个anchor匹配IOU值最高的gt（IOU值），合理确定阈值来挑选基本的正、负样本
     :param pos_overlap: 
     :param neg_overlap: 
     :param all_anchors: 
@@ -122,16 +125,25 @@ def pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT):
     pos_sample = np.array([all_anchors[index] for index in pos_index])
     neutral_sample = np.array([all_anchors[index] for index in neutral_index])
     neg_sample = np.array([all_anchors[index] for index in neg_index])
-    print(pos_sample)
-    return pos_sample, neutral_sample, neg_sample
+    print(len(pos_sample))
+    print(len(neutral_sample))
+    return pos_inds, neutral_inds, argmax_iou_index
 
 
 if __name__ == "__main__":
-    shape = [224, 224] # shape = [256, 512]
-    stride = [16, 16] # stride = [32, 32]
-    GT = np.array(([10, 15, 20, 25], [200, 250, 210, 260]))
-    pos_overlap = 0.1
-    neg_overlap = 0.05
-    anchors = anchors_generation()
-    all_anchors = sliding_anchors_all(shape, stride, anchors)
-    pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT)
+    # 准备voc的GT标注数据集
+    data_path = "F:\\VOC2007"
+    classes_count, all_images, all_annotations = voc_final(data_path)
+    # 界定正、负样本的阈值边界
+    pos_overlap = 0.5
+    neg_overlap = 0.4
+    # 一张图，一张图生成all_anchors,并测试最佳的正、负样本阈值情况
+    for index, pic_name in enumerate(all_annotations.keys()):
+        shape = list(all_images[index].shape[0: 2])
+        stride = [1, 1]
+        GT = np.array(all_annotations[pic_name])
+        GT2 = np.array(([1,1,1,1,],[2,2,2,2]))
+        print(GT2)
+        anchors = anchors_generation()
+        all_anchors = sliding_anchors_all(shape, stride, anchors)
+        pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT)

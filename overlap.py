@@ -5,9 +5,7 @@ Created on 2018/10/17 14:30
 @author: royce.mao
 
 # 计算两组boxes的IOU值，返回(N,M)维数组，N是GT数量，M是anchor数量
-
-# 其中，一个box的存储方式为numpy.array(x1,y1,x2,y2)（左上角、右下角的坐标值）
-
+# 其中，一个box的存储方式为numpy.array(x1,y1,x2,y2)（左下角、右上角的坐标值）
 """
 import numpy as np
 

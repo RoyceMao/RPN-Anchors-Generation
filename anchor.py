@@ -26,7 +26,7 @@ def anchors_generation(base_size=None, ratios=None, scales=None):
     :return: 
     """
     if base_size is None:
-        base_size = 185
+        base_size = 57
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:
@@ -84,7 +84,7 @@ def sliding_anchors_all(shape, stride, anchors):
     # print("========================")
     # print(all_anchors) # [0]长度为256✖512，[0][n]长度为9的3维数组
     all_anchors = all_anchors.reshape((K * A, 4))
-    # print(all_anchors)
+    print(all_anchors)
     return all_anchors
 
 
@@ -125,15 +125,18 @@ def pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT):
     pos_sample = np.array([all_anchors[index] for index in pos_index])
     neutral_sample = np.array([all_anchors[index] for index in neutral_index])
     neg_sample = np.array([all_anchors[index] for index in neg_index])
-    print(len(pos_sample))
-    print(len(neutral_sample))
+    print("所有正样本数量：{}".format(len(pos_sample)))
+    print("所有中性样本数量：{}".format(len(neutral_sample)))
+    print("所有负样本数量：{}".format(len(neg_sample)))
     return pos_inds, neutral_inds, argmax_iou_index
 
 
 if __name__ == "__main__":
     # 准备voc的GT标注数据集
     data_path = "F:\\VOC2007"
-    classes_count, all_images, all_annotations = voc_final(data_path)
+    width = 224
+    height = 224
+    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
     # 界定正、负样本的阈值边界
     pos_overlap = 0.5
     neg_overlap = 0.4
@@ -142,8 +145,8 @@ if __name__ == "__main__":
         shape = list(all_images[index].shape[0: 2])
         stride = [1, 1]
         GT = np.array(all_annotations[pic_name])
-        GT2 = np.array(([1,1,1,1,],[2,2,2,2]))
-        print(GT2)
+        GT2 = np.array(([1,1,2,2],[2,2,3,3]))
+        print(GT2[0,1])
         anchors = anchors_generation()
         all_anchors = sliding_anchors_all(shape, stride, anchors)
-        pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT)
+        pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT2)

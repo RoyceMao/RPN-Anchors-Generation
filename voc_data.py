@@ -8,6 +8,7 @@ voc标注数据集的处理与解析
 """
 
 import os
+import cv2
 import xml.etree.ElementTree as ET
 from PIL import Image
 import numpy as np
@@ -91,12 +92,12 @@ def get_voc_data(data_path):
             print(e)
             continue
     print("class_map:{}".format(class_mapping))
-    return all_imgs, classes_count
+    return class_mapping, all_imgs, classes_count
 
 
-def parse_data_detect(all_imgs_infos):
+def parse_data_detect(all_imgs_infos, width, height):
     """
-    把之前生成的all_imgs字典格式数据，解析为目标检测需要的结果
+    把之前生成的all_imgs字典格式数据，按既定缩放比例,解析为目标检测需要的结果
     (x1, x2, y1, y2, cls)
     :param image_infos:
     :return:
@@ -106,29 +107,41 @@ def parse_data_detect(all_imgs_infos):
     for image_info in all_imgs_infos:
         img_path = image_info["filepath"]
         img_data = np.array(Image.open(img_path).convert("RGB"))
+        img_data = cv2.resize(img_data, (width, height), interpolation=cv2.INTER_CUBIC)
+        width_info = image_info["width"]
+        height_info = image_info["height"]
         if 'bboxes' in image_info.keys():
             list = []
             for box in image_info['bboxes']:
                 cls = box['class']
+                '''
                 x1 = box['x1']
                 x2 = box['x2']
                 y1 = box['y1']
                 y2 = box['y2']
+                '''
+                x1 = box['x1']*(width/width_info)
+                x2 = box['x2']*(width/width_info)
+                y1 = box['y1']*(height/height_info)
+                y2 = box['y2']*(height/height_info)
                 (x1, x2, y1, y2) = [round(x) for x in [x1, x2, y1, y2]]
                 list.append([x1, x2, y1, y2, cls])
             all_annotations[image_info["filepath"].split("\\")[-1]] = list
         all_images.append(img_data)
     return all_images, all_annotations
 
-def voc_final(data_path):
-    all_imgs, classes_count = get_voc_data(data_path)
-    all_images, all_annotations = parse_data_detect(all_imgs)
-    return classes_count, all_images, all_annotations
+def voc_final(data_path, width, height):
+    class_mapping, all_imgs, classes_count = get_voc_data(data_path)
+    print(all_imgs)
+    all_images, all_annotations = parse_data_detect(all_imgs, width, height)
+    return class_mapping, classes_count, all_images, all_annotations
 
 if __name__ == "__main__":
     data_path = "F:\\VOC2007"
-    classes_count, all_images, all_annotations = voc_final(data_path)
-    print(list(all_images[0].shape[0:2]))
+    width = 224
+    height = 224
+    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
+    print(list(all_images[0].shape[:2]))
     print(all_annotations)
     for index, (image, annotations) in enumerate(zip(all_images, all_annotations.values())):
         print(annotations)

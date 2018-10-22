@@ -10,6 +10,9 @@ Created on 2018/10/17 14:30
 import numpy as np
 
 def overlap(boxes,query_boxes):
+    if len(boxes.shape) == 1:
+        boxes = np.reshape(boxes, (-1, len(boxes)))
+    else:
      M = boxes.shape[0] # ground truth boxes个数
      N = query_boxes.shape[0] # 待检测overlap的anchor boxes个数
      overlaps = np.zeros((M, N))
@@ -43,6 +46,6 @@ def overlap(boxes,query_boxes):
 
 
 if __name__ == "__main__":
-    boxes =  np.ndarray(shape=(2,4), dtype=int, buffer=np.array([1,2,3,4,5,6,7,8]), offset=0, order="C")
+    boxes =  np.ndarray(shape=(1,4), dtype=int, buffer=np.array([1,2,3,4]), offset=0, order="C")
     query_boxes = np.ndarray(shape=(3,4), dtype=int, buffer=np.array([1,2,3,4,5,6,7,8,9,10,11,12]), offset=0, order="C")
-    overlap(boxes,query_boxes)
+    print(overlap(boxes,query_boxes).T)

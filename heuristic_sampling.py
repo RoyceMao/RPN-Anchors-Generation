@@ -58,7 +58,10 @@ def anchor_targets_bbox(
     anchors,
     image_group,
     annotations_group,
-    num_classes
+    num_classes,
+    pos_overlap,
+    neg_overlap,
+    class_mapping
 ):
     """ 
     生成RPN网络中一个batch边框分类和回归的目标
@@ -116,7 +119,7 @@ def anchor_targets_bbox(
         regression_batch[index, ignore_indices, -1] = -1
         # 越界边框标注为-1，并忽略
         anchors_centers = np.vstack([(anchors[:, 0] + anchors[:, 2]) / 2, (anchors[:, 1] + anchors[:, 3]) / 2]).T
-        indices = np.logical_or(anchors_centers[:, 0] >= ([width, height])[1], anchors_centers[:, 1] >= ([width, height])[0])
+        indices = np.logical_or(anchors_centers[:, 0] >= ([224, 224])[1], anchors_centers[:, 1] >= ([224, 224])[0])
         labels_batch[index, indices, -1] = - 1
         regression_batch[index, indices, -1] = -1
         '''
@@ -129,12 +132,14 @@ def anchor_targets_bbox(
     # 计算一个batch的图像，标注为前景、背景类的anchors数量之和
     num_anchors = np.sum(labels_batch[:, :, -1] == 1) + np.sum(labels_batch[:, :, -1] == 0)
     # 打印正负样本数量
-    print("post_num:{},bg_num:{},ignore_num:{},proposals_num:{}".format(np.sum(labels_batch[:, :, -1] == 1),
+    print("删除越界边框后1:3启发式采样：post_num:{},bg_num:{},ignore_num:{},proposals_num:{}".format(np.sum(labels_batch[:, :, -1] == 1),
                                                        np.sum(labels_batch[:, :, -1] == 0),
                                                        np.sum(labels_batch[:, :, -1] == -1),
                                                        num_anchors))
-
-    return labels_batch, regression_batch, boxes_batch, num_anchors
+    # 提取batch中所有的正、负样本索引
+    # pos_inds = (labels_batch[:,:,-1] == 1).ravel()
+    inds = (labels_batch[:,:,-1] != -1).ravel()
+    return labels_batch, regression_batch, num_anchors, inds
 
 if __name__ == "__main__":
     # 准备voc的GT标注数据集
@@ -150,7 +155,7 @@ if __name__ == "__main__":
     anchors = anchors_generation()
     all_anchors = sliding_anchors_all([width, height], [1, 1], anchors)
     # 启发式采样
-    labels_batch, regression_batch, boxes_batch, num_anchors = anchor_targets_bbox(all_anchors, all_images, all_annotations, len(classes_count))
+    labels_batch, regression_batch, num_anchors, inds = anchor_targets_bbox(all_anchors, all_images, all_annotations, len(classes_count), pos_overlap, neg_overlap, class_mapping)
 
 
 

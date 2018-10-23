@@ -142,6 +142,6 @@ if __name__ == "__main__":
     height = 224
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
     print(list(all_images[0].shape[:2]))
-    print(all_annotations)
+    print(np.array(all_images).shape)
     for index, (image, annotations) in enumerate(zip(all_images, all_annotations.values())):
         print(annotations)

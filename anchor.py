@@ -84,7 +84,6 @@ def sliding_anchors_all(shape, stride, anchors):
     # print("========================")
     # print(all_anchors) # [0]长度为256✖512，[0][n]长度为9的3维数组
     all_anchors = all_anchors.reshape((K * A, 4))
-    print(all_anchors)
     return all_anchors
 
 

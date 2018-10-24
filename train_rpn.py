@@ -4,7 +4,7 @@ Created on 2018/10/22 14:00
 
 @author: royce.mao
 
-rpn网络针对proposals（1：3采样后）的binary前景背景评分，筛选出regions of interest，以及bbox regression回归。
+rpn网络针对proposals（1：3采样后）的binary前景背景评分，以及bbox regression回归。
 """
 from keras import layers
 from keras.layers import Input, Convolution2D
@@ -14,7 +14,7 @@ from keras.optimizers import Adam
 from anchor import anchors_generation, sliding_anchors_all, pos_neg_iou
 from heuristic_sampling import anchor_targets_bbox
 from voc_data import voc_final
-from loss import Loss
+from rpn_loss import Loss
 import numpy as np
 import time
 

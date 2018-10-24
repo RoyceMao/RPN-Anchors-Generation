@@ -5,6 +5,8 @@ Created on 2018/10/22 09:14
 @author: royce.mao
 
 根据rpn_cls_score对proposals的评分对regions of interest，进行非极大抑制，进一步削减训练样本。
+
+# 注：overlap函数有修改，4个坐标的位置有变动，跑nms时需要改回来
 """
 
 # coding:utf-8
@@ -43,6 +45,6 @@ def nms(bbox, thresh, max_boxes):
 if __name__ == "__main__":
     bbox = np.array(([1,2,3,4,10],[4,5,6,7,20],[4,5,6,7,40],[1,2,3.5,4.5,30]))
     thresh = 0.5
-    a, b = nms(bbox, thresh, 3)
+    a, b = nms(bbox, thresh, 4)
     print('剩余的proposals对应的ROIs：\n{}'.format(a))
     print('剩余的proposals对应的scores：\n{}'.format(b))

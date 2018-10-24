@@ -11,62 +11,38 @@ Created on 2018/10/22 09:14
 from overlap import overlap
 import numpy as np
 
-def nms_plan(scores, boxes, threshold = 0.7, class_sets = None):
-    """
-    根据类别判断RPN分类、回归预测后的bbox集合（未完成）
-    post-process the results of im_detect
-    :param scores: N * (K * 4) numpy
-    :param boxes: N * K numpy
-    :param class_sets: e.g. CLASSES = ('__background__','person','bike','motorbike','car','bus')
-    :return: a list of K-1 dicts, no background, each is {'class': classname, 'dets': None | [[x1,y1,x2,y2,score],...]}
-    """
-    num_class = scores.shape[1] if class_sets is None else len(class_sets)
-    assert num_class * 4 == boxes.shape[1],\
-        'Detection scores and boxes dont match'
-    class_sets = ['class_' + str(i) for i in range(0, num_class)] if class_sets is None else class_sets
 
-    res = []
-    for ind, cls in enumerate(class_sets[1:]):
-        ind += 1 # skip background
-        cls_boxes =  boxes[:, 4*ind : 4*(ind+1)]
-        cls_scores = scores[:, ind]
-        dets = np.hstack((cls_boxes, cls_scores[:, np.newaxis])).astype(np.float32)
-        keep = nms(dets, thresh=0.3)
-        dets = dets[keep, :]
-        dets = dets[np.where(dets[:, 4] > threshold)]
-        r = {}
-        if dets.shape[0] > 0:
-            r['class'], r['dets'] = cls, dets
-        else:
-            r['class'], r['dets'] = cls, None
-        res.append(r)
-    return res
-
-
-def nms(bbox, thresh):
+def nms(bbox, thresh, max_boxes):
     """
     局部非极大抑制
-    :param bbox: 
+    :param bbox: 1张图（1个batch）的所有proposals
     :param thresh:
     :return: 
     """
+    proposals = bbox[:, :4] # bbox框
     scores = bbox[:, 4]  # bbox打分
-    # bbox打分从大到小顺序排列，取各自的index
+    # bbox打分从大到小顺序排列，并返回各自的index,如[2,0,1,3,4]
     order = scores.argsort()[::-1]
-    # keep为最后保留的bbox对应的index
+    # 初始化keep
     keep = []
-    # order[0]是当前分数最大的窗口的分数，肯定保留
-    score_max_index = order[0]
-    keep.append(score_max_index)
-    # 计算窗口i与所有窗口的交叠部分的面积
-    iou = overlap(np.reshape(bbox[score_max_index, :4], (-1, 4)), bbox[:, :4])
-    inds = np.where(np.reshape(iou, (len(scores))) <= thresh)[0]
-    for ind in inds:
-        keep.append(ind)
-    return keep
+    # 计算临时最高分窗口与临时所有窗口的IOU
+    while len(order) > 0:
+        # 循环剔除不满足阈值条件的高重叠IOU proposals
+        keep.append(order[0])
+        iou = overlap(proposals[order[0], :], bbox[:,:4])
+        inds = np.where(np.reshape(iou, (len(order))) > thresh)[0]
+        bbox = np.delete(bbox, inds, 0) # 删除指定index对应的值
+        order = [x for x in order if x not in inds] # 删除指定index
+        # break条件
+        if len(order) < 2 or len(keep) >= max_boxes:
+            break
+    boxes = proposals[keep]
+    probs = scores[keep]
+    return boxes, probs
 
 if __name__ == "__main__":
     bbox = np.array(([1,2,3,4,10],[4,5,6,7,20],[4,5,6,7,40],[1,2,3.5,4.5,30]))
     thresh = 0.5
-    a = nms(bbox, thresh)
-    print(a)
+    a, b = nms(bbox, thresh, 3)
+    print('剩余的proposals对应的ROIs：\n{}'.format(a))
+    print('剩余的proposals对应的scores：\n{}'.format(b))

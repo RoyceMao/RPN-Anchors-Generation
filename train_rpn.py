@@ -47,7 +47,7 @@ def train(num_anchors, imgs, labels_batch, regression_batch):
     # 启发式采样中，标注为1的样本用于回归丨标注为0、1的样本用于分类
     # cls_inds =
     # regr_inds =
-    history = model.fit(imgs, [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]])
+    history = model.fit_generator(imgs, [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]])
 
 
 '''

@@ -147,6 +147,8 @@ if __name__ == "__main__":
     width = 224
     height = 224
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
+    print(all_images)
+    print(all_annotations)
     # all_annotations = np.array(value for value in dict_annotations.values())
     # 界定正、负样本的阈值边界
     pos_overlap = 0.5

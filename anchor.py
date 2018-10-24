@@ -26,7 +26,7 @@ def anchors_generation(base_size=None, ratios=None, scales=None):
     :return: 
     """
     if base_size is None:
-        base_size = 57
+        base_size = 30
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:
@@ -55,7 +55,7 @@ def anchors_generation(base_size=None, ratios=None, scales=None):
 
 def sliding_anchors_all(shape, stride, anchors):
     """
-    假设shape = [256, 512]，stride = [32, 32]
+    假设shape = [14, 14]，stride = [16, 16]
     根据feature map的大小、步长以及基准anchors，滑动窗口，生成所有anchors映射到原图的坐标
     :param shape: 
     :param stride: 

@@ -5,7 +5,7 @@ Created on 2018/10/17 14:30
 @author: royce.mao
 
 # 计算两组boxes的IOU值，返回(N,M)维数组，N是GT数量，M是anchor数量
-# 其中，一个box的存储方式为numpy.array(x1,y1,x2,y2)（左下角、右上角的坐标值）
+# 其中，anchor_box的存储方式为numpy.array(x1,y1,x2,y2)，gt_box的存储方式为numpy.array(x1,x2,y1,y2)
 """
 import numpy as np
 
@@ -25,19 +25,19 @@ def overlap(boxes,query_boxes):
         )
         for m in range(M):
             iw = (
-                  min(boxes[m, 2], query_boxes[n, 2]) -
+                  min(boxes[m, 1], query_boxes[n, 2]) -
                   max(boxes[m, 0], query_boxes[n, 0]) + 1
              )
             if iw > 0: # 大于零说明水平方向上相交
                 ih = (
                     min(boxes[m, 3], query_boxes[n, 3]) -
-                    max(boxes[m, 1], query_boxes[n, 1]) + 1
+                    max(boxes[m, 2], query_boxes[n, 1]) + 1
                  )
                 if ih > 0: # 大于零说明垂直方向上相交
                     # ua是两个boxes面积的并集
                     ua = np.float64(
-                        (boxes[m, 2] - boxes[m, 0] + 1) *
-                        (boxes[m, 3] - boxes[m, 1] + 1) +
+                        (boxes[m, 1] - boxes[m, 0] + 1) *
+                        (boxes[m, 3] - boxes[m, 2] + 1) +
                          box_area - iw * ih
                     )
                     # iw * ih是两个boxes面积的交集

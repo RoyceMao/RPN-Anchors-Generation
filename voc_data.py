@@ -95,7 +95,7 @@ def get_voc_data(data_path):
     return class_mapping, all_imgs, classes_count
 
 
-def parse_data_detect(all_imgs_infos, width, height):
+def parse_data_detect(all_imgs_infos):
     """
     把之前生成的all_imgs字典格式数据，按既定缩放比例,解析为目标检测需要的结果
     (x1, x2, y1, y2, cls)
@@ -107,7 +107,7 @@ def parse_data_detect(all_imgs_infos, width, height):
     for image_info in all_imgs_infos:
         img_path = image_info["filepath"]
         img_data = np.array(Image.open(img_path).convert("RGB"))
-        img_data = cv2.resize(img_data, (width, height), interpolation=cv2.INTER_CUBIC)
+        img_data = cv2.resize(img_data, (224, 224), interpolation=cv2.INTER_CUBIC)
         width_info = image_info["width"]
         height_info = image_info["height"]
         if 'bboxes' in image_info.keys():
@@ -120,27 +120,27 @@ def parse_data_detect(all_imgs_infos, width, height):
                 y1 = box['y1']
                 y2 = box['y2']
                 '''
-                x1 = box['x1']*(width/width_info)
-                x2 = box['x2']*(width/width_info)
-                y1 = box['y1']*(height/height_info)
-                y2 = box['y2']*(height/height_info)
+                x1 = box['x1']*(224/width_info)
+                x2 = box['x2']*(224/width_info)
+                y1 = box['y1']*(224/height_info)
+                y2 = box['y2']*(224/height_info)
                 (x1, x2, y1, y2) = [round(x) for x in [x1, x2, y1, y2]]
                 list.append([x1, x2, y1, y2, cls])
             all_annotations[image_info["filepath"].split("\\")[-1]] = list
         all_images.append(img_data)
     return all_images, all_annotations
 
-def voc_final(data_path, width, height):
+def voc_final(data_path):
     class_mapping, all_imgs, classes_count = get_voc_data(data_path)
     print(all_imgs)
-    all_images, all_annotations = parse_data_detect(all_imgs, width, height)
+    all_images, all_annotations = parse_data_detect(all_imgs)
     return class_mapping, classes_count, all_images, all_annotations
 
 if __name__ == "__main__":
     data_path = "F:\\VOC2007"
     width = 224
     height = 224
-    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
+    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     print(list(all_images[0].shape[:2]))
     print(np.array(all_images).shape)
     for index, (image, annotations) in enumerate(zip(all_images, all_annotations.values())):

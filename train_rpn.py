@@ -4,13 +4,11 @@ Created on 2018/10/22 14:00
 
 @author: royce.mao
 
-rpn网络针对proposals（1：3采样后）的binary前景背景评分，以及bbox regression回归。
+rpn网络针对（1：3采样后）proposals的binary前景背景评分，以及bbox regression的回归，得到RoIs。
 """
-from keras import layers
-from keras.layers import Input, Convolution2D
-from keras_applications.resnet50 import identity_block, conv_block
-from keras.models import Model
+from net_layers import resnet50, rpn_layer
 from keras.optimizers import Adam
+from keras.models import Model
 from anchor import anchors_generation, sliding_anchors_all, pos_neg_iou
 from heuristic_sampling import anchor_targets_bbox
 from voc_data import voc_final
@@ -25,54 +23,10 @@ def resnet50_rpn(num_anchors):
     :param num_anchors: 
     :return: 
     """
-    bn_axis = 3
-    input_tensor = Input(shape=(224, 224, 3))
-    # resnet50基础网络部分
-    x = layers.ZeroPadding2D(padding=(3, 3), name='conv1_pad')(input_tensor)
-    x = layers.Conv2D(64, (7, 7),
-                      strides=(2, 2),
-                      padding='valid',
-                      kernel_initializer='he_normal',
-                      name='conv1')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name='bn_conv1')(x)
-    x = layers.Activation('relu')(x)
-    x = layers.MaxPooling2D((3, 3), strides=(2, 2))(x)
-
-    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1))
-    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b')
-    x = identity_block(x, 3, [64, 64, 256], stage=2, block='c')
-
-    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='d')
-
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='b')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='c')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='d')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='e')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='f')
-    ''' 
-    # 选定trainable的层，默认全部训练
-    base_model = Model(inputs=img_input, outputs=x)
-    for layer in base_model.layers:
-        if isinstance(layer, BatchNormalization):
-            layer.trainable = True
-        else:
-            layer.trainable = False
-    '''
-    # rpn部分，接上relu的全连接层
-    x = Convolution2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='normal', name='rpn_conv1')(
-        x)
-    # rpn_cls与rpn_regression的分支
-    x_class = Convolution2D(num_anchors, (1, 1), activation='sigmoid', kernel_initializer='uniform',
-                            name='rpn_out_class')(x)
-    x_regr = Convolution2D(num_anchors * 4, (1, 1), activation='linear', kernel_initializer='zero',
-                           name='rpn_out_regress')(x)
-    # summary
-    model = Model(inputs=input_tensor, outputs=[x_class, x_regr], name='cls_regr_rpn')
-    # model.summary()
+    input_tensor, base_layer = resnet50()
+    output_layer = rpn_layer(base_layer, num_anchors)
+    model = Model(inputs=input_tensor, outputs=output_layer, name='cls_regr_rpn')
+    model.summary()
     return model
 
 

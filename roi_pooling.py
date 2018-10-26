@@ -17,10 +17,10 @@ from voc_data import voc_final
 from net_layers import resnet50, roi_pooling_conv, roi_pooling_layer
 import numpy as np
 
-def proposal_to_roi_plan(proposals, gt_boxes, classifier_min_overlap, classifier_max_overlap):
+def cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overlap):
     """
-    原图nms后生成的proposals做具体类别的cls标注，与坐标形式转换：[x1, y1, x2, y2]转换为[x1, y1, w, h]
-    :param proposals: nms输出
+    做具体类别的cls标注，与坐标形式转换：[x1, y1, x2, y2]转换为[x1, y1, w, h]
+    :param proposals: proposals窗口以及对应的feature map特征
     :param gt_boxes: gt
     :return: 
     """
@@ -41,7 +41,7 @@ def proposal_to_roi_plan(proposals, gt_boxes, classifier_min_overlap, classifier
     # print(proposals)
     # max_iou与overlap阈值的比较,区分第2阶段的正、负样本，并做cls的标注
     pos_index = np.where(np.array(max_iou) >= classifier_max_overlap)
-    # print(pos_gt_index)
+    # print(pos_index[0])
     pos_cls = gt_boxes[[max_index[x][0] for x in pos_index[0]], 4]
     # print(pos_cls)
     hard_neg_index = [np.where(max_iou == iou)[0] for iou in max_iou if classifier_min_overlap <= iou < classifier_max_overlap]
@@ -52,15 +52,43 @@ def proposal_to_roi_plan(proposals, gt_boxes, classifier_min_overlap, classifier
     for i, x in enumerate(pos_index[0]):
         cls_target[x] = pos_cls[i]
     rois = proposals
-    return rois, cls_target
+    return rois, cls_target, pos_index, max_index
+
+def regr_target(rois, gt_boxes, pos_index, max_index):
+    """
+    做具体目标框回归目标与回归修正的计算公式逻辑
+    :param proposals: rois窗口以及对应的feature map特征
+    :param gt_boxes: gt
+    :param pos_index: 正样本的下标索引
+    :param max_index: 正样本对应的最佳gt的下标索引
+    :return: 
+    """
+    # 所有正样本对应的最佳gt的中心点
+    gt_x_center = (gt_boxes[[max_index[x][0] for x in pos_index[0]], 0].astype(np.float64) + gt_boxes[[max_index[x][0] for x in pos_index[0]], 2].astype(np.float64)) / 2.0
+    gt_y_center = (gt_boxes[[max_index[x][0] for x in pos_index[0]], 1].astype(np.float64) + gt_boxes[[max_index[x][0] for x in pos_index[0]], 3].astype(np.float64)) / 2.0
+    # 所有正样本本身的中心点
+    x_center = rois[pos_index[0], 0] + rois[pos_index[0], 2] / 2.0
+    y_center = rois[pos_index[0], 1] + rois[pos_index[0], 3] / 2.0
+    # 偏移量、缩放量（回归目标）
+    dx = (gt_x_center - x_center) / rois[pos_index[0], 2]
+    dy = (gt_y_center - y_center) / rois[pos_index[0], 3]
+    dw = np.log((gt_boxes[[max_index[x][0] for x in pos_index[0]], 1].astype(np.float64) - gt_boxes[[max_index[x][0] for x in pos_index[0]], 0].astype(np.float64)) / rois[pos_index[0], 2])
+    dh = np.log((gt_boxes[[max_index[x][0] for x in pos_index[0]], 3].astype(np.float64) - gt_boxes[[max_index[x][0] for x in pos_index[0]], 2].astype(np.float64)) / rois[pos_index[0], 3])
+    # 计算回归修正
+    x_target_center = dx * rois[pos_index[0], 2] + x_center
+    y_target_center = dy * rois[pos_index[0], 3] + y_center
+    w_target = np.exp(dw) * rois[pos_index[0], 2]
+    h_target = np.exp(dh) * rois[pos_index[0], 3]
+    x_target = x_target_center - w_target / 2.0
+    y_target = y_target_center - h_target / 2.0
+    return np.stack([x_target, y_target, w_target, h_target]), np.stack([dx, dy, dw, dh])
+
 
 def proposal_to_roi(rois_pic, stride):
     """
-    原始图像RoI到feature map上RoI的映射，并计算第2阶段的回归目标
-    :param proposals: 
-    :param gt_boxes: 
-    :param classifier_min_overlap: 
-    :param classifier_max_overlap: 
+    原图RoI到feature map上RoI的坐标映射
+    :param rois_pic: 原图的RoIs
+    :param stride: 步长
     :return: 
     """
     rois_map = rois_pic
@@ -69,31 +97,35 @@ def proposal_to_roi(rois_pic, stride):
     rois_map[:,1] = rois_pic[:, 1] / stride[0]
     rois_map[:,2] = rois_pic[:, 2] / stride[1]
     rois_map[:,3] = rois_pic[:, 3] / stride[1]
-    # 计算第2阶段的回归目标
-    # regression_target ===
-    return rois_map, regression_target
+    return rois_map
 
-def resnet50_roi_pooling(rois_map, cls_target, regr_target):
+def resnet50_roi_pooling_cls_regr(rois_map, cls_target, regr_target):
     """
-    resnet50的基础特征提取网络 + roi pooling conv结构 + cls_layer、regr_layer
+    resnet50的基础特征提取网络 + roi pooling conv结构(特征映射) + cls_layer、regr_layer
     :param rois: feature map对应的rois
     :param pooling_size: 池化后的尺寸
     :param num_rois:
     :return: 
     """
     base_layer = resnet50()
+    # 结合resnet50的16倍下采样的feature map与feature map上对应映射的RoIs，做roi_pooling
     out_roi_pool = roi_pooling_layer(base_layer, rois_map, pooling_size=14, num_rois=len(rois_map))
-    # conv_block_td、classifier_layers、out_class、out_regr
+    # 后续 conv_block_td、classifier_layers、out_class、out_regr等（进行中）
     # ===
 
 if __name__ == "__main__":
-    # proposal_to_roi函数测试
+    # cls_target函数数学逻辑测试
     proposals = np.array(([1,2,3.5,4.5],[4,5,6.5,7.5],[8,9,10.5,11.5],[12,13,14.5,15.5],[16,17,18,19]))
     gt_boxes = np.array(([1,2,3,4,'person'],[4,5,6,7,'dog'],[8,9,10,11,'sheep'],[12,13,14,15,'bow']))
     classifier_min_overlap = 0.0
     classifier_max_overlap = 0.25
-    rois, cls = proposal_to_roi_plan(proposals, gt_boxes, classifier_min_overlap, classifier_max_overlap)
+    rois, cls, pos_index, max_index = cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overlap)
     print('ROIs：\n{}'.format(rois))
-    print('ROIs标注：\n{}'.format(cls))
-    # roi_pooling函数测试
+    print('ROIs分类目标：\n{}'.format(cls))
+    # regr_target函数数学逻辑测试
+    revise, shift = regr_target(rois, gt_boxes, pos_index, max_index)
+    print('正样本ROIs回归目标：\n{}'.format(shift))
+    print('正样本ROIs回归修正：\n{}'.format(revise))
+    # 最终分类、回归测试
+
 

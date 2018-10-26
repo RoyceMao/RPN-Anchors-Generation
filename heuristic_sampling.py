@@ -41,9 +41,9 @@ def bbox_transform(anchors, gt_boxes, mean=None, std=None):
     anchor_heights = anchors[:, 3] - anchors[:, 1]
 
     # 计算回归目标(左上和右下坐标),没有长宽回归
-    targets_dx1 = (gt_boxes[:, 0] - anchors[:, 0]) / anchor_widths   #
+    targets_dx1 = (gt_boxes[:, 0] - anchors[:, 0]) / anchor_widths
     targets_dy1 = (gt_boxes[:, 1] - anchors[:, 1]) / anchor_heights
-    targets_dx2 = (gt_boxes[:, 2] - anchors[:, 2]) / anchor_widths  #
+    targets_dx2 = (gt_boxes[:, 2] - anchors[:, 2]) / anchor_widths
     targets_dy2 = (gt_boxes[:, 3] - anchors[:, 3]) / anchor_heights
 
     targets = np.stack((targets_dx1, targets_dy1, targets_dx2, targets_dy2))
@@ -122,13 +122,7 @@ def anchor_targets_bbox(
         indices = np.logical_or(anchors_centers[:, 0] >= ([224, 224])[1], anchors_centers[:, 1] >= ([224, 224])[0])
         labels_batch[index, indices, -1] = - 1
         regression_batch[index, indices, -1] = -1
-        '''
-        j=0
-        for i in (labels_batch[index, :, -1]):
-            if i == 1:
-                j+=1
-        print(j)
-    '''
+
     # 计算一个batch的图像，标注为前景、背景类的anchors数量之和
     num_anchors = np.sum(labels_batch[:, :, -1] == 1) + np.sum(labels_batch[:, :, -1] == 0)
     # 打印正负样本数量
@@ -146,7 +140,7 @@ if __name__ == "__main__":
     data_path = "F:\\VOC2007"
     width = 224
     height = 224
-    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
+    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     print(all_images)
     print(all_annotations)
     # all_annotations = np.array(value for value in dict_annotations.values())

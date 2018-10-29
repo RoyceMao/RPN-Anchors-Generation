@@ -103,7 +103,7 @@ def parse_data_detect(all_imgs_infos):
     :return:
     """
     all_images = []
-    all_annotations = {}
+    all_annotations = []
     for image_info in all_imgs_infos:
         img_path = image_info["filepath"]
         img_data = np.array(Image.open(img_path).convert("RGB"))
@@ -126,13 +126,13 @@ def parse_data_detect(all_imgs_infos):
                 y2 = box['y2']*(224/height_info)
                 (x1, x2, y1, y2) = [round(x) for x in [x1, x2, y1, y2]]
                 list.append([x1, x2, y1, y2, cls])
-            all_annotations[image_info["filepath"].split("\\")[-1]] = list
+            # all_annotations[image_info["filepath"].split("\\")[-1]] = list
+            all_annotations.append(list)
         all_images.append(img_data)
     return all_images, all_annotations
 
 def voc_final(data_path):
     class_mapping, all_imgs, classes_count = get_voc_data(data_path)
-    print(all_imgs)
     all_images, all_annotations = parse_data_detect(all_imgs)
     return class_mapping, classes_count, all_images, all_annotations
 
@@ -143,5 +143,8 @@ if __name__ == "__main__":
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     print(list(all_images[0].shape[:2]))
     print(np.array(all_images).shape)
+    '''
     for index, (image, annotations) in enumerate(zip(all_images, all_annotations.values())):
-        print(annotations)
+        print("=============")
+        print(all_annotations)
+    '''

@@ -99,19 +99,6 @@ def proposal_to_roi(rois_pic, stride):
     rois_map[:,3] = rois_pic[:, 3] / stride[1]
     return rois_map
 
-def resnet50_roi_pooling_cls_regr(rois_map, cls_target, regr_target):
-    """
-    resnet50的基础特征提取网络 + roi pooling conv结构(特征映射) + cls_layer、regr_layer
-    :param rois: feature map对应的rois
-    :param pooling_size: 池化后的尺寸
-    :param num_rois:
-    :return: 
-    """
-    base_layer = resnet50()
-    # 结合resnet50的16倍下采样的feature map与feature map上对应映射的RoIs，做roi_pooling
-    out_roi_pool = roi_pooling_layer(base_layer, rois_map, pooling_size=14, num_rois=len(rois_map))
-    # 后续 conv_block_td、classifier_layers、out_class、out_regr等（进行中）
-    # ===
 
 if __name__ == "__main__":
     # cls_target函数数学逻辑测试

@@ -78,8 +78,8 @@ def anchor_targets_bbox(
     # print(boxes_batch)
 
     # compute labels and regression targets
-    for index, pic_name in enumerate(annotations_group.keys()):
-        annotations_single = annotations_group[pic_name]
+    for index, anno_name in enumerate(annotations_group):
+        annotations_single = anno_name
         # 用numpy把1✖n的一维数组，转化为n✖4的二维数组（n代表一张pic里面的GT数量）
         for i, gt_box in enumerate(annotations_single):
             a = gt_box[:4]
@@ -126,10 +126,12 @@ def anchor_targets_bbox(
     # 计算一个batch的图像，标注为前景、背景类的anchors数量之和
     num_anchors = np.sum(labels_batch[:, :, -1] == 1) + np.sum(labels_batch[:, :, -1] == 0)
     # 打印正负样本数量
+    '''
     print("删除越界边框后1:3启发式采样：post_num:{},bg_num:{},ignore_num:{},proposals_num:{}".format(np.sum(labels_batch[:, :, -1] == 1),
                                                        np.sum(labels_batch[:, :, -1] == 0),
                                                        np.sum(labels_batch[:, :, -1] == -1),
                                                        num_anchors))
+    '''
     # 提取batch中所有的正、负样本索引
     # pos_inds = (labels_batch[:,:,-1] == 1).ravel()
     inds = (labels_batch[:,:,-1] != -1).ravel()
@@ -141,8 +143,8 @@ if __name__ == "__main__":
     width = 224
     height = 224
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
-    print(all_images)
-    print(all_annotations)
+    # print(all_images)
+    print(len(all_annotations))
     # all_annotations = np.array(value for value in dict_annotations.values())
     # 界定正、负样本的阈值边界
     pos_overlap = 0.5
@@ -152,6 +154,3 @@ if __name__ == "__main__":
     all_anchors = sliding_anchors_all([width, height], [1, 1], anchors)
     # 启发式采样
     labels_batch, regression_batch, num_anchors, inds = anchor_targets_bbox(all_anchors, all_images, all_annotations, len(classes_count), pos_overlap, neg_overlap, class_mapping)
-
-
-

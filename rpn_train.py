@@ -12,7 +12,7 @@ from keras.models import Model
 from anchor import anchors_generation, sliding_anchors_all, pos_neg_iou
 from heuristic_sampling import anchor_targets_bbox
 from voc_data import voc_final
-from rpn_loss import Loss
+from rpn_loss import rpn_loss_cls, rpn_loss_regr
 import numpy as np
 import time
 
@@ -30,54 +30,53 @@ def resnet50_rpn(num_anchors):
     return model
 
 
-def gen_data(all_anchors,
-             all_images,
-             all_annotations,
-             batch_size=1):
+def gen_data_rpn(all_anchors,
+                 all_images,
+                 all_annotations,
+                 batch_size=1):
     """
     生成器（迭代器），用于fit_generator边训练边生成训练数据
-    :param image_infos:
-    :param batch_size:
-    :return:
+    :param all_anchors: 
+    :param all_images: 
+    :param all_annotations: 
+    :param batch_size: 
+    :return: 
     """
     length = len(all_images)
-    for i in np.random.randint(0, length, size=batch_size):
-        x =  all_images[i][np.newaxis,:,:]
-        labels_batch, regression_batch, num_anchors, inds = anchor_targets_bbox(all_anchors, all_images[i][np.newaxis,:,:],
-                                                                                all_annotations,
-                                                                                len(classes_count), pos_overlap,
-                                                                                neg_overlap,
-                                                                                class_mapping)
-        # print(labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :].shape)
-        # print(regression_batch[:, :, :4][:, inds, :].shape)
-        y = [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]]
-        yield x, y
+    while True:
+         for i in np.random.randint(0, length, size=batch_size):
+            x = all_images[i][np.newaxis, :, :]
+            labels_batch, regression_batch, num_anchors, inds = anchor_targets_bbox(all_anchors,
+                                                                                    all_images[i][np.newaxis, :, :],
+                                                                                    [all_annotations[i]],
+                                                                                    len(classes_count), pos_overlap,
+                                                                                    neg_overlap,
+                                                                                    class_mapping)
+            # print(labels_batch[:, :, 1][:, :, np.newaxis].shape)
+            # y = [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]]
+            y = [labels_batch[:, :, 1][:, :, np.newaxis].reshape((1,14,14,9)), regression_batch[:, :, :4].reshape(1,14,14,36)]
+            # print(y[0].shape)
+            # print(y[1].shape)
+            yield x, y
 
 
 def train(num_anchors):
     """
     训练过程
-    :param num_anchors: 
-    :param imgs: 读取的单batch图片目标
-    :param labels_batch: 计算的分类目标
-    :param regression_batch: 计算的回归目标
+    :param num_anchors: 一个batch图片的anchors数量
     :return: 
     """
-    model = resnet50_rpn(num_anchors)
-    adam = Adam(lr=0.001)
-    cls_loss, regr_loss = Loss()
-    model.compile(optimizer=adam, loss=[cls_loss, regr_loss], metrics=['accuracy'], loss_weights=[1, 1],
-                  sample_weight_mode=None, weighted_metrics=None,
-                  target_tensors=None)
-    print("[INFO]网络RPN开始训练........")
+    model_rpn = resnet50_rpn(num_anchors)
+    adam = Adam(lr=1e-5)
+    model_rpn.compile(optimizer=adam, loss=[rpn_loss_cls(), rpn_loss_regr()], metrics=['accuracy'], loss_weights=[1, 1],
+                      sample_weight_mode=None, weighted_metrics=None,
+                      target_tensors=None)
+    print("[INFO]一阶段网络RPN开始训练........")
     # 启发式采样中，标注为1的样本用于回归丨标注为0、1的样本用于分类
-    # cls_inds =
-    # regr_inds =
     # history = model.fit_generator(imgs, [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]])
-    history = model.fit_generator(generator = gen_data(all_anchors, all_images, all_annotations, batch_size = 1),
-                                  steps_per_epoch = 1,
-                                  epochs = 2)
-
+    history = model_rpn.fit_generator(generator=gen_data_rpn(all_anchors, all_images, all_annotations, batch_size=1),
+                                      steps_per_epoch=1,
+                                      epochs=25)
 
 
 if __name__ == "__main__":
@@ -85,7 +84,7 @@ if __name__ == "__main__":
     data_path = "F:\\VOC2007"
     width = 14
     height = 14
-    stride = [16,16]
+    stride = [16, 16]
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     # 界定正、负样本的阈值边界
     pos_overlap = 0.5

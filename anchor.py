@@ -26,7 +26,7 @@ def anchors_generation(base_size=None, ratios=None, scales=None):
     :return: 
     """
     if base_size is None:
-        base_size = 30
+        base_size = 67
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:
@@ -63,8 +63,8 @@ def sliding_anchors_all(shape, stride, anchors):
     :return: 
     """
     # 滑动窗口隐射到原图的中心点（相邻间距由1变为stride步长：32）
-    sliding_x = (np.arange(0, shape[1]) + 0.5) * stride[1] # len=512
-    sliding_y = (np.arange(0, shape[0]) + 0.5) * stride[0] # len=256
+    sliding_x = (np.arange(0, shape[1]) + 0.5) * stride[1] #
+    sliding_y = (np.arange(0, shape[0]) + 0.5) * stride[0] #
     # shift_x（256✖512，256行数值相同），shift_y（256✖512,512列数值相同）
     shift_x, shift_y = np.meshgrid(sliding_x, sliding_y)
     # print(shift_x)
@@ -124,28 +124,29 @@ def pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT):
     pos_sample = np.array([all_anchors[index] for index in pos_index])
     neutral_sample = np.array([all_anchors[index] for index in neutral_index])
     neg_sample = np.array([all_anchors[index] for index in neg_index])
-    print("所有正样本数量：{}".format(len(pos_sample)))
-    print("所有中性样本数量：{}".format(len(neutral_sample)))
-    print("所有负样本数量：{}".format(len(neg_sample)))
+    # print("所有正样本数量：{}".format(len(pos_sample)))
+    # print("所有中性样本数量：{}".format(len(neutral_sample)))
+    # print("所有负样本数量：{}".format(len(neg_sample)))
     return pos_inds, neutral_inds, argmax_iou_index
 
 
 if __name__ == "__main__":
     # 准备voc的GT标注数据集
     data_path = "F:\\VOC2007"
-    width = 224
-    height = 224
-    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path, width, height)
+    width = 14
+    height = 14
+    class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     # 界定正、负样本的阈值边界
     pos_overlap = 0.5
     neg_overlap = 0.4
     # 一张图，一张图生成all_anchors,并测试最佳的正、负样本阈值情况
-    for index, pic_name in enumerate(all_annotations.keys()):
-        shape = list(all_images[index].shape[0: 2])
-        stride = [1, 1]
-        GT = np.array(all_annotations[pic_name])
+    for index, anno_name in enumerate(all_annotations):
+        stride = [16, 16]
+        shape = (width, height)
+        print(shape)
+        GT = np.array(all_annotations[index])
         GT2 = np.array(([1,1,2,2],[2,2,3,3]))
-        print(GT2[0,1])
         anchors = anchors_generation()
         all_anchors = sliding_anchors_all(shape, stride, anchors)
+        print(len(all_anchors))
         pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT2)

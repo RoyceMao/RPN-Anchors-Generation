@@ -13,7 +13,7 @@ Created on 2018/10/17 15:30
 # np.ravel()：高维数组打平为一维
 # np.stack：数组里面的元素堆叠
 """
-from overlap import overlap
+from overlap import overlap_gt
 from voc_data import get_voc_data, parse_data_detect, voc_final
 import numpy as np
 
@@ -96,7 +96,7 @@ def pos_neg_iou(pos_overlap, neg_overlap, all_anchors, GT):
     :return: 
     """
     # IOU值计算
-    overlaps = overlap(GT.astype(np.float64), all_anchors.astype(np.float64))
+    overlaps = overlap_gt(GT.astype(np.float64), all_anchors.astype(np.float64))
     # all_anchors中每个anchor最佳的IOU值与其对应的GT索引
     argmax_iou_index = np.argmax(overlaps.T, axis=1) # （1维数组）按行返回每个anchor对应的IOU值最高的GT索引
     # print(argmax_iou_index)

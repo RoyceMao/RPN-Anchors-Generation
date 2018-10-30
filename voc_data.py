@@ -143,6 +143,7 @@ if __name__ == "__main__":
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     print(list(all_images[0].shape[:2]))
     print(np.array(all_images).shape)
+    print(np.array((all_annotations[0])))
     '''
     for index, (image, annotations) in enumerate(zip(all_images, all_annotations.values())):
         print("=============")

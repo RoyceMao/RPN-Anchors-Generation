@@ -208,5 +208,3 @@ def fast_rcnn_layer(base_layer, input_shape, trainable):
     x = identity_block_td(x, block='c', trainable=trainable)
     x = TimeDistributed(AveragePooling2D((7, 7)), name='avg_pool')(x)
     return x
-
-

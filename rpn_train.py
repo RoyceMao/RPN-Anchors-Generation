@@ -4,7 +4,9 @@ Created on 2018/10/22 14:00
 
 @author: royce.mao
 
-rpn网络针对（1：3采样后）proposals的binary前景背景评分，以及bbox regression的回归，得到RoIs。
+# np.concatenate()方法不改变拼接后的numpy数组维度
+# np.stack()方法一般来说会增加拼接后的numpy数组维度
+# 这里训练rpn,用rpn生成proposals，并映射为RoIs之后，训练第2阶段的检测网络。
 """
 from net_layers import resnet50, rpn_layer
 from keras.optimizers import Adam
@@ -13,6 +15,8 @@ from anchor import anchors_generation, sliding_anchors_all, pos_neg_iou
 from heuristic_sampling import anchor_targets_bbox
 from voc_data import voc_final
 from rpn_loss import rpn_loss_cls, rpn_loss_regr
+from roi_pooling import cls_target, regr_target, proposal_to_roi
+from nms import nms
 import numpy as np
 import time
 
@@ -46,17 +50,24 @@ def gen_data_rpn(all_anchors,
     while True:
          for i in np.random.randint(0, length, size=batch_size):
             x = all_images[i][np.newaxis, :, :]
-            labels_batch, regression_batch, num_anchors, inds = anchor_targets_bbox(all_anchors,
+            labels_batch, regression_batch, op_inds, inds = anchor_targets_bbox(all_anchors,
                                                                                     all_images[i][np.newaxis, :, :],
                                                                                     [all_annotations[i]],
                                                                                     len(classes_count), pos_overlap,
                                                                                     neg_overlap,
                                                                                     class_mapping)
             # print(labels_batch[:, :, 1][:, :, np.newaxis].shape)
-            # y = [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]]
-            y = [labels_batch[:, :, 1][:, :, np.newaxis].reshape((1,14,14,9)), regression_batch[:, :, :4].reshape(1,14,14,36)]
-            # print(y[0].shape)
-            # print(y[1].shape)
+            # 原始计算loss的y标签
+            y1 = labels_batch[:, :, 1][:, :, np.newaxis].reshape((1,14,14,9))
+            y2 = regression_batch[:, :, :4].reshape(1,14,14,36)
+            # y1_tmp中前景、景类统一标识为1，忽略类标识为0，用以区分样本，只拿前景、背景类用于计算cls_loss
+            y1_tmp = labels_batch[:, :, 1][:, :, np.newaxis]
+            y1_tmp[:, inds, :] = 1
+            y1_tmp[:, op_inds, :] = 0
+            # y_rpn_cls第4维前9列代表区分忽略类和非忽略类的numpy，y_rpn_regr第4维前36列代表区分正样本和非正样本的numpy
+            y_rpn_cls = np.concatenate([y1_tmp.reshape((1,14,14,9)), y1], axis=3)
+            y_rpn_regr = np.concatenate([np.repeat(y1, 4, axis=3), y2], axis=3)
+            y = [y_rpn_cls, y_rpn_regr]
             yield x, y
 
 
@@ -68,7 +79,7 @@ def train(num_anchors):
     """
     model_rpn = resnet50_rpn(num_anchors)
     adam = Adam(lr=1e-5)
-    model_rpn.compile(optimizer=adam, loss=[rpn_loss_cls(), rpn_loss_regr()], metrics=['accuracy'], loss_weights=[1, 1],
+    model_rpn.compile(optimizer=adam, loss=[rpn_loss_cls(num_anchors), rpn_loss_regr(num_anchors)], metrics=['accuracy'], loss_weights=[1, 1],
                       sample_weight_mode=None, weighted_metrics=None,
                       target_tensors=None)
     print("[INFO]一阶段网络RPN开始训练........")
@@ -76,7 +87,29 @@ def train(num_anchors):
     # history = model.fit_generator(imgs, [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]])
     history = model_rpn.fit_generator(generator=gen_data_rpn(all_anchors, all_images, all_annotations, batch_size=1),
                                       steps_per_epoch=1,
-                                      epochs=25)
+                                      epochs=5)
+    return model_rpn
+
+def predict(model_rpn, all_imgs):
+    """
+    预测过程
+    :param model_rpn: 训练保存的模型
+    :param all_imgs: 读取的多个batch的图片[batch, 224, 224 ,3]
+    :return: [(batch, 14, 14, 9),(batch, 14, 14, 36)]
+    """
+    predict_imgs = model_rpn.predict(all_imgs)
+    return predict_imgs
+
+def regr_revise(proposals, dx1, dy1, dx2, dy2):
+    """
+    第1阶段bbox_transform函数定义的回归目标在4个偏移量(dx1,dy1,dx2,dy2)基础上，做位置修正
+    :return: 
+    """
+    x1_target = dx1 * (proposals[:,2] - proposals[:,0]) + proposals[:, 0]
+    y1_target = dy1 * (proposals[:,3] - proposals[:,1]) + proposals[:, 1]
+    x2_target = dx2 * (proposals[:,2] - proposals[:,0]) + proposals[:, 2]
+    y2_target = dy2 * (proposals[:,3] - proposals[:,1]) + proposals[:, 3]
+    return np.stack((x1_target.ravel(), y1_target.ravel(), x2_target.ravel(), y2_target.ravel())).T
 
 
 if __name__ == "__main__":
@@ -92,7 +125,7 @@ if __name__ == "__main__":
     # 生成所有映射回原图的anchors并进行启发式采样
     anchors = anchors_generation()
     all_anchors = sliding_anchors_all([width, height], stride, anchors)
-    # print(all_anchors)
+    # print(all_anchors.shape)
     # print(all_annotations)
     '''
     # 一次性计算得到分类、回归的目标
@@ -108,6 +141,36 @@ if __name__ == "__main__":
     '''
     # training
     start_time = time.time()
-    train(9)
+    model_rpn = train(9)
+    ## model_rpn.save('F:\\VOC2007\\rpn.h5')
     end_time = time.time()
-    print("时间消耗：{}".format(end_time - start_time))
+    print("时间消耗：{}秒".format(end_time - start_time))
+    # predicting并生成proposals（暂时拿原训练图做预测）
+    for i in range(len(all_images)):
+        # 由于nms的计算只能同时在一张图上进行,所以一张一张预测、nms筛选
+        predict_imgs = predict(model_rpn, np.array(all_images[i][np.newaxis, :, :]))
+        ## print(predict_imgs[0].shape) # 预测的所有anchors的probs
+        ## print(predict_imgs[1].shape) # 预测的所有anchors的回归目标
+        # 对all_anchors进行位置回归修正，得到all_proposals
+        dx1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 0] # 1764=14*14*9
+        dy1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 1]
+        dx2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 2]
+        dy2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
+        all_proposals = regr_revise(all_anchors, dx1, dy1, dx2, dy2)
+        # 在all_proposals基础上进行nms筛选，并生成batch图片对应的最终proposals
+        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=10) # 一般取300
+        print('生成的Proposals：\n{}'.format(proposals))
+        ## thresh设置过低，max_boxe设置过高，都会导致最后满足nms条件的bboxes没max_boxes那么多，出现重复bboxes、probs
+        #===========================================================================================================
+        # 第1阶段整理完毕！接上第2阶段的部分内容测试
+        # ===========================================================================================================
+        # 标定2阶段全局的正、负样本（cls_target）
+        rois_pic, cls, pos_index, max_index = cls_target(proposals, np.array((all_annotations[i]),dtype=np.ndarray),
+                                                                classifier_min_overlap=0.1, classifier_max_overlap=0.5)
+        # 标定2阶段全局的回归目标（shift），回归修正坐标值（revise_target）
+        revise, shift = regr_target(rois_pic, np.array((all_annotations[i]),dtype=np.ndarray), pos_index, max_index)
+        print('分类目标：\n{}'.format(cls))
+        print('回归目标偏移：\n{}'.format(shift))
+        # roi_pic 映射到 roi_feature_map（rpn后先做的回归修正，这里再做的映射）
+        rois_map = proposal_to_roi(rois_pic, stride)
+        print('映射后的RoIs：\n{}'.format(rois_map))

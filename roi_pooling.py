@@ -12,7 +12,7 @@ RoI Pooling，把所有RoIs映射到特征图上，根据pooling_size，进行�
   与输入RoIs数量相同，但大、小固定为（w * h）且映射了feature的RoIs
 """
 from nms import nms
-from overlap import overlap
+from overlap import overlap_gt
 from voc_data import voc_final
 from net_layers import resnet50, roi_pooling_conv, roi_pooling_layer
 import numpy as np
@@ -27,7 +27,7 @@ def cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overl
     # cls 标注准备
     max_index = []
     max_iou = []
-    iou = overlap(proposals, np.array((gt_boxes[:, :4]), dtype=np.float32))
+    iou = overlap_gt(proposals, np.array((gt_boxes[:, :4]), dtype=np.float32))
     # print(np.where(iou[0] == np.max(iou[0]))[0])
     for i in range(len(iou)):
         ## 找到每个proposal最大的iou，以及对应的gt索引
@@ -81,7 +81,7 @@ def regr_target(rois, gt_boxes, pos_index, max_index):
     h_target = np.exp(dh) * rois[pos_index[0], 3]
     x_target = x_target_center - w_target / 2.0
     y_target = y_target_center - h_target / 2.0
-    return np.stack([x_target, y_target, w_target, h_target]), np.stack([dx, dy, dw, dh])
+    return np.stack([x_target, y_target, w_target, h_target]).T, np.stack([dx, dy, dw, dh]).T
 
 
 def proposal_to_roi(rois_pic, stride):
@@ -103,7 +103,9 @@ def proposal_to_roi(rois_pic, stride):
 if __name__ == "__main__":
     # cls_target函数数学逻辑测试
     proposals = np.array(([1,2,3.5,4.5],[4,5,6.5,7.5],[8,9,10.5,11.5],[12,13,14.5,15.5],[16,17,18,19]))
+    print(type(proposals))
     gt_boxes = np.array(([1,2,3,4,'person'],[4,5,6,7,'dog'],[8,9,10,11,'sheep'],[12,13,14,15,'bow']))
+    print(type(gt_boxes[0]))
     classifier_min_overlap = 0.0
     classifier_max_overlap = 0.25
     rois, cls, pos_index, max_index = cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overlap)

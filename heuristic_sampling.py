@@ -132,10 +132,11 @@ def anchor_targets_bbox(
                                                        np.sum(labels_batch[:, :, -1] == -1),
                                                        num_anchors))
     '''
-    # 提取batch中所有的正、负样本索引
+    # 提取batch中所有的正、负样本索引inds，以及忽略样本索引op_inds
     # pos_inds = (labels_batch[:,:,-1] == 1).ravel()
     inds = (labels_batch[:,:,-1] != -1).ravel()
-    return labels_batch, regression_batch, num_anchors, inds
+    op_inds = (labels_batch[:,:,-1] == -1).ravel()
+    return labels_batch, regression_batch, op_inds, inds
 
 if __name__ == "__main__":
     # 准备voc的GT标注数据集
@@ -153,4 +154,5 @@ if __name__ == "__main__":
     anchors = anchors_generation()
     all_anchors = sliding_anchors_all([width, height], [1, 1], anchors)
     # 启发式采样
-    labels_batch, regression_batch, num_anchors, inds = anchor_targets_bbox(all_anchors, all_images, all_annotations, len(classes_count), pos_overlap, neg_overlap, class_mapping)
+    labels_batch, regression_batch, op_inds, inds = anchor_targets_bbox(all_anchors, all_images, all_annotations, len(classes_count), pos_overlap, neg_overlap, class_mapping)
+    print(labels_batch.shape)

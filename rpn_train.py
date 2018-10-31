@@ -30,7 +30,7 @@ def resnet50_rpn(num_anchors):
     input_tensor, base_layer = resnet50()
     output_layer = rpn_layer(base_layer, num_anchors)
     model = Model(inputs=input_tensor, outputs=output_layer, name='cls_regr_rpn')
-    model.summary()
+    # model.summary()
     return model
 
 
@@ -78,6 +78,12 @@ def train(num_anchors):
     :return: 
     """
     model_rpn = resnet50_rpn(num_anchors)
+    try:
+        print('loading weights from {}'.format('resnet50_weights_tf_dim_ordering_tf_kernels.h5'))
+        model_rpn.load_weights('F:\\VOC2007\\resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5', by_name=True)
+        print('加载预训练权重成功！')
+    except:
+        print('加载预训练权重失败！')
     adam = Adam(lr=1e-5)
     model_rpn.compile(optimizer=adam, loss=[rpn_loss_cls(num_anchors), rpn_loss_regr(num_anchors)], metrics=['accuracy'], loss_weights=[1, 1],
                       sample_weight_mode=None, weighted_metrics=None,
@@ -86,14 +92,14 @@ def train(num_anchors):
     # 启发式采样中，标注为1的样本用于回归丨标注为0、1的样本用于分类
     # history = model.fit_generator(imgs, [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]])
     history = model_rpn.fit_generator(generator=gen_data_rpn(all_anchors, all_images, all_annotations, batch_size=1),
-                                      steps_per_epoch=1,
-                                      epochs=5)
+                                      steps_per_epoch=2,
+                                      epochs=25)
     return model_rpn
 
 def predict(model_rpn, all_imgs):
     """
     预测过程
-    :param model_rpn: 训练保存的模型
+    :param model_rpn: 训练保存的模型（结构+权重）
     :param all_imgs: 读取的多个batch的图片[batch, 224, 224 ,3]
     :return: [(batch, 14, 14, 9),(batch, 14, 14, 36)]
     """
@@ -142,7 +148,7 @@ if __name__ == "__main__":
     # training
     start_time = time.time()
     model_rpn = train(9)
-    ## model_rpn.save('F:\\VOC2007\\rpn.h5')
+    ## model_rpn.save_weights('F:\\VOC2007\\rpn.h5')
     end_time = time.time()
     print("时间消耗：{}秒".format(end_time - start_time))
     # predicting并生成proposals（暂时拿原训练图做预测）
@@ -158,7 +164,7 @@ if __name__ == "__main__":
         dy2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
         all_proposals = regr_revise(all_anchors, dx1, dy1, dx2, dy2)
         # 在all_proposals基础上进行nms筛选，并生成batch图片对应的最终proposals
-        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=10) # 一般取300
+        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=32)
         print('生成的Proposals：\n{}'.format(proposals))
         ## thresh设置过低，max_boxe设置过高，都会导致最后满足nms条件的bboxes没max_boxes那么多，出现重复bboxes、probs
         #===========================================================================================================

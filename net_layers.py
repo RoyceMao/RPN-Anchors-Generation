@@ -6,8 +6,10 @@ Created on 2018/10/25 14:29
 
 resnet50的基础网络、共享feature map的RPN分支、共享feature map的ROI Pooling 分支
 """
+from __future__ import print_function
+from __future__ import absolute_import
 from keras import layers
-import keras.backend as K
+import keras.backend as K # keras后端接口
 from keras.layers import Input, Add,  Activation,  Convolution2D, AveragePooling2D, TimeDistributed
 from FixedBatchNormalization import FixedBatchNormalization
 from keras_applications.resnet50 import identity_block, conv_block
@@ -89,8 +91,9 @@ def roi_pooling_conv(img, rois, pooling_size, num_rois):
     :param num_rois: 
     :return: feature map与坐标映射后的rois对应区域经过resize之后的特征映射结果
     """
-    input_shape = K.shape(img) # feature map尺寸大小
-    channels = input_shape[0][3] # channels不变
+    input_shape = img.shape # feature map尺寸大小
+    # img、rois
+    channels = input_shape[3] # channels不变
     outputs = []
     for num in range(num_rois):
         # 一个batch一张图片
@@ -107,8 +110,8 @@ def roi_pooling_conv(img, rois, pooling_size, num_rois):
         ##不在（w * h）上做（pooling_size, pooling_size）的区域划分，然后在每个区域上做max_pooling？还是resize就是这个过程？
         rs = tf.image.resize_images(img[:, y:y + h, x:x + w, :], (pooling_size, pooling_size))
         outputs.append(rs)
-    final_output = K.concatenate(outputs, axis=0)
-    final_output = K.reshape(final_output, (1, num_rois, pooling_size, pooling_size, channels)) # channels reshape为单独的维度
+    final_output = K.concatenate(outputs, axis=0) # 在给定轴上将一个列表中的张量串联为一个张量
+    final_output = K.reshape(final_output, (1, num_rois, pooling_size, pooling_size, channels)) # channels 为单独的维度
     final_output = K.permute_dimensions(final_output, (0, 1, 2, 3, 4)) # 按照给定的模式重排一个张量的轴
     return final_output
 
@@ -118,10 +121,11 @@ def roi_pooling_layer(base_layer, rois, pooling_size, num_rois):
     :param base_layer: 
     :return: 
     """
-    out_roi_pool = roi_pooling_conv(pooling_size, num_rois)([base_layer, rois])
+    out_roi_pool = roi_pooling_conv(base_layer, rois, pooling_size, num_rois)
     return out_roi_pool
 
-def identity_block_td(input_tensor, block, kernel_size=3, filters=None, stage=5, trainable=True):
+
+def identity_block_td(input_tensor, kernel_size, filters, stage, block, trainable=True):
     """
     在identity_block基础上，引入了TimeDistributed封装，以产生针对各个时间步信号的独立RoIs处理
     :param input_tensor: 
@@ -157,7 +161,7 @@ def identity_block_td(input_tensor, block, kernel_size=3, filters=None, stage=5,
     return x
 
 
-def conv_block_td(input_tensor, block, input_shape, kernel_size=3, filters=None, stage=5, strides=(2, 2), trainable=True):
+def conv_block_td(input_tensor, kernel_size, filters, stage, block, input_shape, strides=(2, 2), trainable=True):
     """
     同样，在conv_block基础上，引入了TimeDistributed封装，以产生针对各个时间步信号的独立RoIs处理
     :param input_tensor: 
@@ -196,15 +200,15 @@ def conv_block_td(input_tensor, block, input_shape, kernel_size=3, filters=None,
     x = Activation('relu')(x)
     return x
 
-def fast_rcnn_layer(base_layer, input_shape, trainable):
+def fast_rcnn_layer(up_layer, input_shape, trainable):
     """
     stage_2 第2阶段fastrcnn的部分网络结构
     :param base_layer: 
     :param input_shape: 
     :return: 
     """
-    x = conv_block_td(base_layer, block='a', input_shape=input_shape, trainable=trainable)
-    x = identity_block_td(x, block='b', trainable=trainable)
-    x = identity_block_td(x, block='c', trainable=trainable)
+    x = conv_block_td(up_layer, 3, [512, 512, 2048], stage=5,  block='a', input_shape=input_shape, strides=(2, 2), trainable=trainable)
+    x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='b', trainable=trainable)
+    x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='c', trainable=trainable)
     x = TimeDistributed(AveragePooling2D((7, 7)), name='avg_pool')(x)
     return x

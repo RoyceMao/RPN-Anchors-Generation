@@ -32,7 +32,7 @@ def cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overl
     for i in range(len(iou)):
         ## 找到每个proposal最大的iou，以及对应的gt索引
         max_iou.append(np.max(iou[i]))
-        max_index.append(np.where(iou[i] == np.max(iou[i]))[0])
+        max_index.append(np.where(iou[i] == np.max(iou[i]))[0]) # 某个proposal对应最大iou的gt的index
     # 坐标
     w = proposals[:,2] - proposals[:,0]
     h = proposals[:,3] - proposals[:,1]
@@ -40,7 +40,7 @@ def cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overl
     proposals[:,3] = h
     # print(proposals)
     # max_iou与overlap阈值的比较,区分第2阶段的正、负样本，并做cls的标注
-    pos_index = np.where(np.array(max_iou) >= classifier_max_overlap)
+    pos_index = np.where(np.array(max_iou) >= classifier_max_overlap) # proposals的index
     # print(pos_index[0])
     pos_cls = gt_boxes[[max_index[x][0] for x in pos_index[0]], 4]
     # print(pos_cls)
@@ -103,9 +103,7 @@ def proposal_to_roi(rois_pic, stride):
 if __name__ == "__main__":
     # cls_target函数数学逻辑测试
     proposals = np.array(([1,2,3.5,4.5],[4,5,6.5,7.5],[8,9,10.5,11.5],[12,13,14.5,15.5],[16,17,18,19]))
-    print(type(proposals))
     gt_boxes = np.array(([1,2,3,4,'person'],[4,5,6,7,'dog'],[8,9,10,11,'sheep'],[12,13,14,15,'bow']))
-    print(type(gt_boxes[0]))
     classifier_min_overlap = 0.0
     classifier_max_overlap = 0.25
     rois, cls, pos_index, max_index = cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overlap)

@@ -26,7 +26,7 @@ def anchors_generation(base_size=None, ratios=None, scales=None):
     :return: 
     """
     if base_size is None:
-        base_size = 67
+        base_size = 60
     if ratios is None:
         ratios = np.array([0.5, 1, 2])
     if scales is None:

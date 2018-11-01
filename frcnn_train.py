@@ -18,10 +18,9 @@ from frcnn_loss import class_loss_cls, class_loss_regr
 from roi_pooling import cls_target, regr_target, proposal_to_roi
 from anchor import anchors_generation, sliding_anchors_all, pos_neg_iou
 from net_layers import resnet50, roi_pooling_layer, fast_rcnn_layer
+from keras.utils import plot_model
 import numpy as np
 import time
-import rpn_train
-
 
 def res_roi_frcnn(max_boxes, nb_classes=21):
     """
@@ -51,7 +50,7 @@ def res_roi_frcnn(max_boxes, nb_classes=21):
     out_regr = TimeDistributed(Dense(4 * (nb_classes - 1), activation='linear', kernel_initializer='zero'),
                                name='dense_regress_{}'.format(nb_classes))(out)
     model = Model(inputs=[input_tensor, input_rois], outputs=[out_cls, out_regr], name='cls_regr_layer')
-    # model.summary()
+    model.summary()
     return model
 
 
@@ -70,7 +69,6 @@ def gen_data_frcnn(model_rpn, all_images, all_annotations, batch_size=1):
         for i in np.random.randint(0, length, size=batch_size):
             # model预测
             predict_imgs = predict(model_rpn, np.array(all_images[i][np.newaxis, :, :]))
-            print(0)
             dx1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 0] # 1764=14*14*9
             dy1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 1]
             dx2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 2]
@@ -78,15 +76,39 @@ def gen_data_frcnn(model_rpn, all_images, all_annotations, batch_size=1):
             all_proposals = regr_revise(all_anchors, dx1, dy1, dx2, dy2)
             # 生成proposals
             proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9,
-                                   max_boxes=10)
-            rois_pic, cls, pos_index, max_index = cls_target(proposals, np.array((all_annotations[i]),dtype=np.ndarray),
-                                                                    classifier_min_overlap=0.1, classifier_max_overlap=0.5)
-            revise, shift = regr_target(rois_pic, np.array((all_annotations[i]), dtype=np.ndarray), pos_index, max_index)
+                                   max_boxes=max_boxes)
+            # print(type(np.array((all_annotations[i]))[0]))
+            rois_pic, cls, pos_index, max_index = cls_target(proposals, np.array((all_annotations[i])),
+                                                             classifier_min_overlap=0.1, classifier_max_overlap=0.5)
+            revise, shift = regr_target(rois_pic, np.array((all_annotations[i])), pos_index, max_index)
             rois_map = proposal_to_roi(rois_pic, stride)
             # 特征量：img、rois两个输入
-            x = [all_images[i][np.newaxis, :, :], rois_map]
+            x = [all_images[i][np.newaxis, :, :], rois_map[np.newaxis, :, :]] # [1, num_rois, 4]
             # 标签量：cls、regr两个输出
-            y = [cls, shift]
+            # y = [np.array((cls))[np.newaxis, :][:, :, np.newaxis], revise[np.newaxis, :, :]] # [1, num_rois, 20]、[1, num_rois, 80]
+            # 开始将y转换为用于计算loss的y_true标签量
+            ## y1分类目标（第3维列数等于nb_classe）
+            y1 = np.zeros((max_boxes, nb_classes))
+            for i in range(max_boxes):
+                '''
+                if cls[i] == 0.0:
+                    y1[i] = [0, 0, 1]
+                '''
+                if cls[i] != 0.0:
+                    a = np.zeros(nb_classes)
+                    a[class_mapping[cls[i]]] = 1
+                    y1[i] = a
+            ## y2回归目标（第3维前4*(nb_classes-1)列是y1类别的repeat，用于标定正样本，后4*(nb_classes-1)列是对应正样本的真实回归目标）
+            y2_true = np.zeros((max_boxes, 4*(nb_classes-1)))
+            j = 0
+            for i in range(max_boxes):
+                if cls[i] in class_mapping.keys() and cls[i] != 'bg':
+                    a = np.zeros(4*(nb_classes-1))
+                    a[4*class_mapping[cls[i]] : 4*class_mapping[cls[i]]+4] = revise[j]
+                    y2_true[i] = a
+                    j += 1
+            y2 = np.concatenate([np.repeat(y1[np.newaxis, :, :][:, :, :(nb_classes-1)], 4, axis=2), y2_true[np.newaxis, :, :]], axis=2)
+            y = [y1[np.newaxis, :, :], y2]
             yield x, y
 
 
@@ -100,7 +122,10 @@ def train(model_rpn, max_boxes, nb_classes):
     :param nb_classes: 
     :return: 
     """
+    # 【必须在train函数里面predict调用一下，不然generator函数里面直接调用会报错？？？】
+    predict(model_rpn, np.array(all_images[0][np.newaxis, :, :]))
     model_fastrcnn = res_roi_frcnn(max_boxes, nb_classes)
+    plot_model(model_fastrcnn, to_file='F:\\VOC2007\\model_fast_rcnn.png')
     try:
         print('loading weights from {}'.format('resnet50_weights_tf_dim_ordering_tf_kernels.h5'))
         model_fastrcnn.load_weights('F:\\VOC2007\\resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5', by_name=True)
@@ -114,14 +139,15 @@ def train(model_rpn, max_boxes, nb_classes):
     print("[INFO]二阶段网络Fast_rcnn开始训练........")
     history = model_fastrcnn.fit_generator(
         generator=gen_data_frcnn(model_rpn, all_images, all_annotations, batch_size=1),
-        steps_per_epoch=2,
-        epochs=5)
+        steps_per_epoch=1,
+        epochs=25)
+    return model_fastrcnn
 
 
 if __name__ == "__main__":
     # 新增参数
-    nb_classes = 21 # 总的类别数
-    max_boxes = 10 # 单张图片nms界定的rois数
+    nb_classes = None # 总的类别数量
+    max_boxes = 10 # 单张图片nms界定的rois数量【超过10就报错？？？】
     pooling_size = 14 # pooling的size
     # 准备voc的GT标注数据集
     data_path = "F:\\VOC2007"
@@ -129,14 +155,18 @@ if __name__ == "__main__":
     height = 14
     stride = [16, 16]
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
+    nb_classes = len(class_mapping) + 1 # 类别数赋值，加上‘bg’类
+    class_mapping['bg'] = len(class_mapping) # class_mapping字典新增‘bg’类
     # 生成所有映射回原图的anchors
     anchors = anchors_generation()
     all_anchors = sliding_anchors_all([width, height], stride, anchors)
     # 加载已训练的rpn模型权重
     model_rpn = resnet50_rpn(9)
-    model_rpn = model_rpn.load_weights('F:\\VOC2007\\rpn.h5')
-    print(type(model_rpn))
+    model_rpn.load_weights('F:\\VOC2007\\rpn.hdf5')
     print('RPN模型加载完毕！（用于训练中生成Proposals）')
     # 开始边生成数据边训练
-    train(model_rpn, max_boxes, nb_classes)
-
+    start_time = time.time()
+    model_fast_rcnn = train(model_rpn, max_boxes, nb_classes)
+    # model_fast_rcnn.save_weights('F:\\VOC2007\\fast_rcnn.hdf5')
+    end_time = time.time()
+    print("时间消耗：{}秒".format(end_time - start_time))

@@ -17,6 +17,8 @@ from voc_data import voc_final
 from rpn_loss import rpn_loss_cls, rpn_loss_regr
 from roi_pooling import cls_target, regr_target, proposal_to_roi
 from nms import nms
+from keras.utils import plot_model
+from keras.callbacks import TensorBoard
 import numpy as np
 import time
 
@@ -60,7 +62,7 @@ def gen_data_rpn(all_anchors,
             # 原始计算loss的y标签
             y1 = labels_batch[:, :, 1][:, :, np.newaxis].reshape((1,14,14,9))
             y2 = regression_batch[:, :, :4].reshape(1,14,14,36)
-            # y1_tmp中前景、景类统一标识为1，忽略类标识为0，用以区分样本，只拿前景、背景类用于计算cls_loss
+            # y1_tmp中前景、背景类统一标识为1，忽略类标识为0，用以区分样本，只拿前景、背景类用于计算cls_loss
             y1_tmp = labels_batch[:, :, 1][:, :, np.newaxis]
             y1_tmp[:, inds, :] = 1
             y1_tmp[:, op_inds, :] = 0
@@ -78,6 +80,7 @@ def train(num_anchors):
     :return: 
     """
     model_rpn = resnet50_rpn(num_anchors)
+    plot_model(model_rpn, to_file='F:\\VOC2007\\model_rpn.png')
     try:
         print('loading weights from {}'.format('resnet50_weights_tf_dim_ordering_tf_kernels.h5'))
         model_rpn.load_weights('F:\\VOC2007\\resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5', by_name=True)
@@ -85,6 +88,7 @@ def train(num_anchors):
     except:
         print('加载预训练权重失败！')
     adam = Adam(lr=1e-5)
+    # callback =TensorBoard(log_dir='F:\\VOC2007\\logs', histogram_freq=0)
     model_rpn.compile(optimizer=adam, loss=[rpn_loss_cls(num_anchors), rpn_loss_regr(num_anchors)], metrics=['accuracy'], loss_weights=[1, 1],
                       sample_weight_mode=None, weighted_metrics=None,
                       target_tensors=None)
@@ -92,7 +96,8 @@ def train(num_anchors):
     # 启发式采样中，标注为1的样本用于回归丨标注为0、1的样本用于分类
     # history = model.fit_generator(imgs, [labels_batch[:, :, 1][:, :, np.newaxis][:, inds, :], regression_batch[:, :, :4][:, inds, :]])
     history = model_rpn.fit_generator(generator=gen_data_rpn(all_anchors, all_images, all_annotations, batch_size=1),
-                                      steps_per_epoch=2,
+                                      # callbacks=callback,
+                                      steps_per_epoch=1,
                                       epochs=25)
     return model_rpn
 
@@ -148,7 +153,7 @@ if __name__ == "__main__":
     # training
     start_time = time.time()
     model_rpn = train(9)
-    ## model_rpn.save_weights('F:\\VOC2007\\rpn.h5')
+    # model_rpn.save_weights('F:\\VOC2007\\rpn.hdf5')
     end_time = time.time()
     print("时间消耗：{}秒".format(end_time - start_time))
     # predicting并生成proposals（暂时拿原训练图做预测）
@@ -164,7 +169,7 @@ if __name__ == "__main__":
         dy2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
         all_proposals = regr_revise(all_anchors, dx1, dy1, dx2, dy2)
         # 在all_proposals基础上进行nms筛选，并生成batch图片对应的最终proposals
-        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=32)
+        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=20)
         print('生成的Proposals：\n{}'.format(proposals))
         ## thresh设置过低，max_boxe设置过高，都会导致最后满足nms条件的bboxes没max_boxes那么多，出现重复bboxes、probs
         #===========================================================================================================

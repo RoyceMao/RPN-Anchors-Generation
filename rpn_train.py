@@ -183,7 +183,7 @@ if __name__ == "__main__":
         rois_pic, cls, pos_index, max_index = cls_target(proposals, np.array((all_annotations[i]),dtype=np.ndarray),
                                                                 classifier_min_overlap=0.1, classifier_max_overlap=0.5)
         # 标定2阶段全局的回归目标（shift），回归修正坐标值（revise_target）
-        revise, shift = regr_target(rois_pic, np.array((all_annotations[i]),dtype=np.ndarray), pos_index, max_index)
+        shift = regr_target(rois_pic, np.array((all_annotations[i]),dtype=np.ndarray), pos_index, max_index)
         print('分类目标：\n{}'.format(cls))
         print('回归目标偏移：\n{}'.format(shift))
         # roi_pic 映射到 roi_feature_map（rpn后先做的回归修正，这里再做的映射）

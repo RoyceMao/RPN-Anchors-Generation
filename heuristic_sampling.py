@@ -11,46 +11,35 @@ from voc_data import voc_final
 import numpy as np
 import keras
 
-def bbox_transform(anchors, gt_boxes, mean=None, std=None):
+def bbox_transform(anchors, gt_boxes):
     """
-    计算anchor-GT对的边框回归的目标
+    计算anchor-GT对应的边框回归的目标
     :param anchors: 一张图像所有的anchors, (x1,y1,x2,y2)
     :param gt_boxes: anchors对应的gt ,(x1,y1,x2,y2)
     :param mean:
     :param std:
     :return:
     """
-
-    if mean is None:
-        mean = np.array([0, 0, 0, 0])
-    if std is None:
-        std = np.array([0.2, 0.2, 0.2, 0.2])
-
-    if isinstance(mean, (list, tuple)):
-        mean = np.array(mean)
-    elif not isinstance(mean, np.ndarray):
-        raise ValueError('Expected mean to be a np.ndarray, list or tuple. Received: {}'.format(type(mean)))
-
-    if isinstance(std, (list, tuple)):
-        std = np.array(std)
-    elif not isinstance(std, np.ndarray):
-        raise ValueError('Expected std to be a np.ndarray, list or tuple. Received: {}'.format(type(std)))
-
-    # 计算长宽
+    # 计算anchors长宽
     anchor_widths = anchors[:, 2] - anchors[:, 0]
     anchor_heights = anchors[:, 3] - anchors[:, 1]
-
-    # 计算回归目标(左上和右下坐标),没有长宽回归
-    targets_dx1 = (gt_boxes[:, 0] - anchors[:, 0]) / anchor_widths
-    targets_dy1 = (gt_boxes[:, 1] - anchors[:, 1]) / anchor_heights
-    targets_dx2 = (gt_boxes[:, 2] - anchors[:, 2]) / anchor_widths
-    targets_dy2 = (gt_boxes[:, 3] - anchors[:, 3]) / anchor_heights
-
-    targets = np.stack((targets_dx1, targets_dy1, targets_dx2, targets_dy2))
+    # 计算gt_boxes长宽
+    gt_widths = gt_boxes[:, 1] - gt_boxes[:, 0]
+    gt_heights = gt_boxes[:, 3] - gt_boxes[:, 2]
+    # 计算anchors中心点坐标
+    anchors_x_center = (anchors[:, 2] + anchors[:, 0]) / 2.0
+    anchors_y_center = (anchors[:, 3] + anchors[:, 1]) / 2.0
+    # 计算gt_boxes中心点坐标
+    gt_x_center = (gt_boxes[:, 0] + anchors[:, 1]) / 2.0
+    gt_y_center = (gt_boxes[:, 2] + anchors[:, 3]) / 2.0
+    # 计算回归目标(中心点偏移，以及长、宽缩放)
+    targets_dx = (gt_x_center - anchors_x_center) / anchor_widths
+    targets_dy = (gt_y_center - anchors_y_center) / anchor_heights
+    targets_dw = np.log(gt_widths / anchor_widths)
+    targets_dh = np.log(gt_heights / anchor_heights) # gt_heights有可能因为resize的缘故，变为0
+    # 规范化
+    targets = np.stack((targets_dx, targets_dy, targets_dw, targets_dh))
     targets = targets.T
-
-    # 标准化
-    targets = (targets - mean) / std
     return targets
 
 
@@ -145,7 +134,6 @@ if __name__ == "__main__":
     height = 224
     class_mapping, classes_count, all_images, all_annotations = voc_final(data_path)
     # print(all_images)
-    print(len(all_annotations))
     # all_annotations = np.array(value for value in dict_annotations.values())
     # 界定正、负样本的阈值边界
     pos_overlap = 0.5
@@ -155,4 +143,4 @@ if __name__ == "__main__":
     all_anchors = sliding_anchors_all([width, height], [1, 1], anchors)
     # 启发式采样
     labels_batch, regression_batch, op_inds, inds = anchor_targets_bbox(all_anchors, all_images, all_annotations, len(classes_count), pos_overlap, neg_overlap, class_mapping)
-    print(labels_batch.shape)
+    print(all_annotations)

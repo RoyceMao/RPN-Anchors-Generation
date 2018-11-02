@@ -46,13 +46,13 @@ def cls_target(proposals, gt_boxes, classifier_min_overlap, classifier_max_overl
     # print(pos_cls)
     hard_neg_index = [np.where(max_iou == iou)[0] for iou in max_iou if classifier_min_overlap <= iou < classifier_max_overlap]
     # 对应合并
-    cls_target = list(np.zeros(len(proposals)))
+    cls = list(np.zeros(len(proposals)))
     for hard_inds in [x[0] for x in hard_neg_index]:
-        cls_target[hard_inds] = "bg"
+        cls[hard_inds] = "bg"
     for i, x in enumerate(pos_index[0]):
-        cls_target[x] = pos_cls[i]
+        cls[x] = pos_cls[i]
     rois = proposals
-    return rois, cls_target, pos_index, max_index
+    return rois, cls, pos_index, max_index
 
 def regr_target(rois, gt_boxes, pos_index, max_index):
     """
@@ -74,14 +74,7 @@ def regr_target(rois, gt_boxes, pos_index, max_index):
     dy = (gt_y_center - y_center) / rois[pos_index[0], 3]
     dw = np.log((gt_boxes[[max_index[x][0] for x in pos_index[0]], 1].astype(np.float64) - gt_boxes[[max_index[x][0] for x in pos_index[0]], 0].astype(np.float64)) / rois[pos_index[0], 2])
     dh = np.log((gt_boxes[[max_index[x][0] for x in pos_index[0]], 3].astype(np.float64) - gt_boxes[[max_index[x][0] for x in pos_index[0]], 2].astype(np.float64)) / rois[pos_index[0], 3])
-    # 计算回归修正
-    x_target_center = dx * rois[pos_index[0], 2] + x_center
-    y_target_center = dy * rois[pos_index[0], 3] + y_center
-    w_target = np.exp(dw) * rois[pos_index[0], 2]
-    h_target = np.exp(dh) * rois[pos_index[0], 3]
-    x_target = x_target_center - w_target / 2.0
-    y_target = y_target_center - h_target / 2.0
-    return np.stack([x_target, y_target, w_target, h_target]).T, np.stack([dx, dy, dw, dh]).T
+    return np.stack([dx, dy, dw, dh]).T
 
 
 def proposal_to_roi(rois_pic, stride):
@@ -91,7 +84,7 @@ def proposal_to_roi(rois_pic, stride):
     :param stride: 步长
     :return: 
     """
-    rois_map = rois_pic
+    rois_map = np.zeros((len(rois_pic), 4))
     # feature mapping，将ROI映射到feature map对应位置
     rois_map[:,0] = rois_pic[:, 0] / stride[0]
     rois_map[:,1] = rois_pic[:, 1] / stride[0]
@@ -110,9 +103,11 @@ if __name__ == "__main__":
     print('ROIs：\n{}'.format(rois))
     print('ROIs分类目标：\n{}'.format(cls))
     # regr_target函数数学逻辑测试
-    revise, shift = regr_target(rois, gt_boxes, pos_index, max_index)
+    shift = regr_target(rois, gt_boxes, pos_index, max_index)
     print('正样本ROIs回归目标：\n{}'.format(shift))
-    print('正样本ROIs回归修正：\n{}'.format(revise))
     # 最终分类、回归测试
+    stride = [16, 16]
+    rois_map = proposal_to_roi(proposals, stride)
+    print('RoIs映射到feature map的目标：\n{}'.format(rois_map))
 
 

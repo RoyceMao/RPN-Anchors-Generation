@@ -12,7 +12,7 @@ from keras.optimizers import Adam
 from keras.layers import TimeDistributed, Dense, Flatten, Input
 from nms import nms
 from voc_data import voc_final
-from rpn_train import regr_revise, resnet50_rpn, predict
+from rpn_train import regr_revise, resnet50_rpn, predict, regr_revise
 from RoiPoolingConv import RoiPoolingConv
 from frcnn_loss import class_loss_cls, class_loss_regr
 from roi_pooling import cls_target, regr_target, proposal_to_roi
@@ -22,7 +22,7 @@ from keras.utils import plot_model
 import numpy as np
 import time
 
-def res_roi_frcnn(max_boxes, nb_classes=21):
+def res_roi_frcnn(max_boxes, pooling_size, nb_classes):
     """
     第2阶段，resnet50的基础特征提取网络 + roi pooling conv结构(特征映射) + cls_layer、regr_layer
     :param rois_map: rpn网络生成的feature map对应的rois
@@ -50,7 +50,7 @@ def res_roi_frcnn(max_boxes, nb_classes=21):
     out_regr = TimeDistributed(Dense(4 * (nb_classes - 1), activation='linear', kernel_initializer='zero'),
                                name='dense_regress_{}'.format(nb_classes))(out)
     model = Model(inputs=[input_tensor, input_rois], outputs=[out_cls, out_regr], name='cls_regr_layer')
-    model.summary()
+    # model.summary()
     return model
 
 
@@ -69,18 +69,18 @@ def gen_data_frcnn(model_rpn, all_images, all_annotations, batch_size=1):
         for i in np.random.randint(0, length, size=batch_size):
             # model预测
             predict_imgs = predict(model_rpn, np.array(all_images[i][np.newaxis, :, :]))
-            dx1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 0] # 1764=14*14*9
-            dy1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 1]
-            dx2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 2]
-            dy2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
-            all_proposals = regr_revise(all_anchors, dx1, dy1, dx2, dy2)
+            dx = predict_imgs[1].reshape(1, 1764, 4)[:, :, 0] # 1764=14*14*9
+            dy = predict_imgs[1].reshape(1, 1764, 4)[:, :, 1]
+            dw = predict_imgs[1].reshape(1, 1764, 4)[:, :, 2]
+            dh = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
+            all_proposals = regr_revise(all_anchors, dx, dy, dw, dh)
             # 生成proposals
             proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9,
                                    max_boxes=max_boxes)
             # print(type(np.array((all_annotations[i]))[0]))
             rois_pic, cls, pos_index, max_index = cls_target(proposals, np.array((all_annotations[i])),
                                                              classifier_min_overlap=0.1, classifier_max_overlap=0.5)
-            revise, shift = regr_target(rois_pic, np.array((all_annotations[i])), pos_index, max_index)
+            shift = regr_target(rois_pic, np.array((all_annotations[i])), pos_index, max_index)
             rois_map = proposal_to_roi(rois_pic, stride)
             # 特征量：img、rois两个输入
             x = [all_images[i][np.newaxis, :, :], rois_map[np.newaxis, :, :]] # [1, num_rois, 4]
@@ -104,7 +104,7 @@ def gen_data_frcnn(model_rpn, all_images, all_annotations, batch_size=1):
             for i in range(max_boxes):
                 if cls[i] in class_mapping.keys() and cls[i] != 'bg':
                     a = np.zeros(4*(nb_classes-1))
-                    a[4*class_mapping[cls[i]] : 4*class_mapping[cls[i]]+4] = revise[j]
+                    a[4*class_mapping[cls[i]] : 4*class_mapping[cls[i]]+4] = shift[j]
                     y2_true[i] = a
                     j += 1
             y2 = np.concatenate([np.repeat(y1[np.newaxis, :, :][:, :, :(nb_classes-1)], 4, axis=2), y2_true[np.newaxis, :, :]], axis=2)
@@ -112,7 +112,7 @@ def gen_data_frcnn(model_rpn, all_images, all_annotations, batch_size=1):
             yield x, y
 
 
-def train(model_rpn, max_boxes, nb_classes):
+def train(model_rpn, max_boxes, pooling_size, nb_classes):
     """
     训练过程
     :param input_tensor: 
@@ -124,7 +124,7 @@ def train(model_rpn, max_boxes, nb_classes):
     """
     # 【必须在train函数里面predict调用一下，不然generator函数里面直接调用会报错？？？】
     predict(model_rpn, np.array(all_images[0][np.newaxis, :, :]))
-    model_fastrcnn = res_roi_frcnn(max_boxes, nb_classes)
+    model_fastrcnn = res_roi_frcnn(max_boxes, pooling_size, nb_classes)
     plot_model(model_fastrcnn, to_file='F:\\VOC2007\\model_fast_rcnn.png')
     try:
         print('loading weights from {}'.format('resnet50_weights_tf_dim_ordering_tf_kernels.h5'))
@@ -147,7 +147,7 @@ def train(model_rpn, max_boxes, nb_classes):
 if __name__ == "__main__":
     # 新增参数
     nb_classes = None # 总的类别数量
-    max_boxes = 10 # 单张图片nms界定的rois数量【超过10就报错？？？】
+    max_boxes = 7 # 单张图片nms界定的rois数量【超过7就报错？？？】
     pooling_size = 14 # pooling的size
     # 准备voc的GT标注数据集
     data_path = "F:\\VOC2007"
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     print('RPN模型加载完毕！（用于训练中生成Proposals）')
     # 开始边生成数据边训练
     start_time = time.time()
-    model_fast_rcnn = train(model_rpn, max_boxes, nb_classes)
+    model_fast_rcnn = train(model_rpn, max_boxes, pooling_size, nb_classes)
     # model_fast_rcnn.save_weights('F:\\VOC2007\\fast_rcnn.hdf5')
     end_time = time.time()
     print("时间消耗：{}秒".format(end_time - start_time))

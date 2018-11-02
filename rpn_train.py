@@ -60,10 +60,10 @@ def gen_data_rpn(all_anchors,
                                                                                     class_mapping)
             # print(labels_batch[:, :, 1][:, :, np.newaxis].shape)
             # 原始计算loss的y标签
-            y1 = labels_batch[:, :, 1][:, :, np.newaxis].reshape((1,14,14,9))
+            y1 = labels_batch[:, :, len(classes_count)][:, :, np.newaxis].reshape((1,14,14,9))
             y2 = regression_batch[:, :, :4].reshape(1,14,14,36)
             # y1_tmp中前景、背景类统一标识为1，忽略类标识为0，用以区分样本，只拿前景、背景类用于计算cls_loss
-            y1_tmp = labels_batch[:, :, 1][:, :, np.newaxis]
+            y1_tmp = labels_batch[:, :, len(classes_count)][:, :, np.newaxis]
             y1_tmp[:, inds, :] = 1
             y1_tmp[:, op_inds, :] = 0
             # y_rpn_cls第4维前9列代表区分忽略类和非忽略类的numpy，y_rpn_regr第4维前36列代表区分正样本和非正样本的numpy
@@ -87,7 +87,7 @@ def train(num_anchors):
         print('加载预训练权重成功！')
     except:
         print('加载预训练权重失败！')
-    adam = Adam(lr=1e-5)
+    adam = Adam(lr=1e-5) # 太高容易过拟合（影响后续nms），太低需要多个epochs收敛
     # callback =TensorBoard(log_dir='F:\\VOC2007\\logs', histogram_freq=0)
     model_rpn.compile(optimizer=adam, loss=[rpn_loss_cls(num_anchors), rpn_loss_regr(num_anchors)], metrics=['accuracy'], loss_weights=[1, 1],
                       sample_weight_mode=None, weighted_metrics=None,
@@ -111,15 +111,19 @@ def predict(model_rpn, all_imgs):
     predict_imgs = model_rpn.predict(all_imgs)
     return predict_imgs
 
-def regr_revise(proposals, dx1, dy1, dx2, dy2):
+def regr_revise(anchors, dx, dy, dw, dh):
     """
-    第1阶段bbox_transform函数定义的回归目标在4个偏移量(dx1,dy1,dx2,dy2)基础上，做位置修正
+    第1阶段bbox_transform函数定义的回归目标在4个偏移量(dx,dy,dw,dh)基础上，做位置修正
     :return: 
     """
-    x1_target = dx1 * (proposals[:,2] - proposals[:,0]) + proposals[:, 0]
-    y1_target = dy1 * (proposals[:,3] - proposals[:,1]) + proposals[:, 1]
-    x2_target = dx2 * (proposals[:,2] - proposals[:,0]) + proposals[:, 2]
-    y2_target = dy2 * (proposals[:,3] - proposals[:,1]) + proposals[:, 3]
+    x_target_center = dx * (anchors[:,2] - anchors[:,0]) + (anchors[:, 2] + anchors[:, 0]) / 2.0
+    y_target_center = dy * (anchors[:,3] - anchors[:,1]) + (anchors[:, 3] + anchors[:, 1]) / 2.0
+    w_target = np.exp(dw) * (anchors[:,2] - anchors[:,0])
+    h_target = np.exp(dh) * (anchors[:,3] - anchors[:,1])
+    x1_target = x_target_center - w_target / 2.0
+    y1_target = y_target_center - h_target / 2.0
+    x2_target = x_target_center + w_target / 2.0
+    y2_target = y_target_center + h_target / 2.0
     return np.stack((x1_target.ravel(), y1_target.ravel(), x2_target.ravel(), y2_target.ravel())).T
 
 
@@ -163,13 +167,13 @@ if __name__ == "__main__":
         ## print(predict_imgs[0].shape) # 预测的所有anchors的probs
         ## print(predict_imgs[1].shape) # 预测的所有anchors的回归目标
         # 对all_anchors进行位置回归修正，得到all_proposals
-        dx1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 0] # 1764=14*14*9
-        dy1 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 1]
-        dx2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 2]
-        dy2 = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
-        all_proposals = regr_revise(all_anchors, dx1, dy1, dx2, dy2)
+        dx = predict_imgs[1].reshape(1, 1764, 4)[:, :, 0] # 1764=14*14*9
+        dy = predict_imgs[1].reshape(1, 1764, 4)[:, :, 1]
+        dw = predict_imgs[1].reshape(1, 1764, 4)[:, :, 2]
+        dh = predict_imgs[1].reshape(1, 1764, 4)[:, :, 3]
+        all_proposals = regr_revise(all_anchors, dx, dy, dw, dh)
         # 在all_proposals基础上进行nms筛选，并生成batch图片对应的最终proposals
-        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=20)
+        proposals, probs = nms(np.column_stack((all_proposals, predict_imgs[0].ravel())), thresh=0.9, max_boxes=10)
         print('生成的Proposals：\n{}'.format(proposals))
         ## thresh设置过低，max_boxe设置过高，都会导致最后满足nms条件的bboxes没max_boxes那么多，出现重复bboxes、probs
         #===========================================================================================================

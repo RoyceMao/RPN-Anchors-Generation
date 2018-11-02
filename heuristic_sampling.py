@@ -74,8 +74,8 @@ def anchor_targets_bbox(
             a = gt_box[:4]
             a.append((class_mapping[gt_box[-1]]))
             if i == 0:
-                annotations = np.array((a))
-                annotations_nolabel = np.array((gt_box[:4]))
+                annotations = np.array((a))[np.newaxis,:]
+                annotations_nolabel = np.array((gt_box[:4]))[np.newaxis,:]
             else:
                 annotations = np.vstack((annotations, np.array((a))))
                 annotations_nolabel = np.vstack((annotations_nolabel, np.array((gt_box[:4]))))
@@ -92,7 +92,8 @@ def anchor_targets_bbox(
         # ===========================================================================
         # 计算边框回归的目标（所有anchors都计算，并非）
         annotations = annotations[argmax_overlaps_inds] # 每个anchor对应的最佳GT索引
-        boxes_batch[index, ...] = annotations  # 记录类别
+        print(annotations.shape)
+        # boxes_batch[index, ...] = annotations  # 记录类别
         # 计算目标类别，默认都是背景类，如[0,0,0,0,1,0,0]]
         labels_batch[index, positive_indices, annotations[positive_indices, 4].astype(int)] = 1  # 赋值标记位
         # 计算回归目标，与记录的类别无关
